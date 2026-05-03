@@ -97,6 +97,7 @@ const STORAGE_KEYS = {
 
 const NOTIFICATION_CHANNEL_ID = "pomodoro-pill";
 const NOTIFICATION_END_CHANNEL_ID = "pomodoro-alerts";
+const NOTIFICATION_END_QUIET_CHANNEL_ID = "pomodoro-alerts-quiet";
 const PILL_NOTIFICATION_ID = "pomodoro-pill-active";
 const SCHEDULED_END_ID = "pomodoro-end-scheduled";
 
@@ -196,6 +197,16 @@ async function configureNotifications() {
           enableVibrate: true,
         },
       );
+      await Notifications.setNotificationChannelAsync(
+        NOTIFICATION_END_QUIET_CHANNEL_ID,
+        {
+          name: "Session Alerts (quiet hours)",
+          importance: Notifications.AndroidImportance.LOW,
+          vibrationPattern: [0],
+          enableVibrate: false,
+          sound: null,
+        },
+      );
     }
   } catch {
     // ignore — permissions denied or not available
@@ -289,8 +300,15 @@ async function scheduleEndNotification(
         title: "Time's up",
         body: `Next: ${sessionLabel(next)}`,
         sound: shouldSound,
+        // During quiet hours, route to a silent/no-vibrate channel so the OS
+        // delivers the alert without sound or vibration even when the JS
+        // bridge is paused.
         ...(Platform.OS === "android"
-          ? { channelId: NOTIFICATION_END_CHANNEL_ID }
+          ? {
+              channelId: inQuiet
+                ? NOTIFICATION_END_QUIET_CHANNEL_ID
+                : NOTIFICATION_END_CHANNEL_ID,
+            }
           : {}),
       },
       trigger: {
@@ -535,10 +553,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetSettings = useCallback(() => {
-    setSettingsState((prev) => ({
-      ...DEFAULT_SETTINGS,
-      onboardingCompleted: prev.onboardingCompleted,
-    }));
+    setSettingsState((prev) => {
+      const next: Settings = {
+        ...DEFAULT_SETTINGS,
+        onboardingCompleted: prev.onboardingCompleted,
+      };
+      // Resync timer to default durations if the timer is fresh (not running,
+      // not paused mid-session). If running/paused, preserve user progress —
+      // they can manually reset the timer.
+      const currentTimer = timerRef.current;
+      const isFreshlyReset =
+        !currentTimer.isRunning &&
+        (currentTimer.pausedRemainingMs == null ||
+          currentTimer.pausedRemainingMs === currentTimer.totalMs);
+      if (isFreshlyReset) {
+        const newTotal = durationForType(currentTimer.sessionType, next);
+        if (newTotal !== currentTimer.totalMs) {
+          setTimer((t) => ({
+            ...t,
+            totalMs: newTotal,
+            pausedRemainingMs: newTotal,
+          }));
+        }
+      }
+      return next;
+    });
   }, []);
 
   const applyPreset = useCallback((preset: Partial<Settings>) => {
