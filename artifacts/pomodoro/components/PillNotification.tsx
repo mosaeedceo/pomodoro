@@ -33,6 +33,7 @@ export function PillNotification() {
   );
   const resolvedScheme =
     settings.colorScheme === "system" ? colorScheme : settings.colorScheme;
+  const isCompact = settings.pillShape === "compact";
   const sessionLabel = t(`session.${timer.sessionType}`);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
@@ -112,11 +113,12 @@ export function PillNotification() {
           left: layout.isTablet ? 32 : 16,
           right: layout.isTablet ? 32 : 16,
         },
+        isCompact ? styles.compactWrapper : null,
       ]}
     >
       <Pressable
         onPress={handleOpen}
-        style={styles.pressable}
+        style={isCompact ? styles.compactPressable : styles.pressable}
         accessibilityRole="button"
         accessibilityLabel={`${sessionLabel} ${formatTime(remainingMs)}`}
       >
@@ -130,10 +132,9 @@ export function PillNotification() {
                   : settings.pillShape === "rounded"
                     ? 18
                     : 999,
-              paddingVertical: settings.pillShape === "compact" ? 8 : 10,
-              gap: settings.pillShape === "compact" ? 6 : 12,
-              paddingHorizontal: settings.pillShape === "compact" ? 8 : 14,
-              maxWidth: settings.pillShape === "compact" ? 210 : undefined,
+              paddingVertical: isCompact ? 8 : 10,
+              gap: isCompact ? 6 : 12,
+              paddingHorizontal: isCompact ? 8 : 14,
             },
             {
               backgroundColor: colors.card,
@@ -153,7 +154,7 @@ export function PillNotification() {
           <View
             style={[
               styles.textCol,
-              settings.pillShape === "compact" ? styles.compactTextCol : null,
+              isCompact ? styles.compactTextCol : null,
             ]}
           >
             <Text style={[styles.label, { color: colors.mutedForeground }]}>
@@ -170,7 +171,7 @@ export function PillNotification() {
             accessibilityLabel={timer.isRunning ? t("timer.pause") : t("timer.resume")}
             style={({ pressed }) => [
               styles.iconBtn,
-              settings.pillShape === "compact" ? styles.compactIconBtn : null,
+              isCompact ? styles.compactIconBtn : null,
               {
                 backgroundColor: sessionColor,
                 opacity: pressed ? 0.85 : 1,
@@ -198,6 +199,13 @@ const styles = StyleSheet.create({
   pressable: {
     width: "100%",
     maxWidth: 360,
+  },
+  compactWrapper: {
+    left: undefined,
+    right: undefined,
+  },
+  compactPressable: {
+    alignSelf: "center",
   },
   pill: {
     flexDirection: "row",
