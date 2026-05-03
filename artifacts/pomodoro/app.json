@@ -3,7 +3,7 @@
     "name": "Pomodoro",
     "slug": "pomodoro",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "pomodoro",
     "userInterfaceStyle": "automatic",
@@ -14,9 +14,11 @@
       "backgroundColor": "#fdf8f6"
     },
     "ios": {
-      "supportsTablet": false,
+      "supportsTablet": true,
       "infoPlist": {
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {

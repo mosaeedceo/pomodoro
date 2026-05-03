@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { formatTime } from "@/lib/format";
 
 const SESSION_LABELS = {
@@ -27,6 +28,7 @@ export function PillNotification() {
   const colors = useColors();
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
   const navigation = useNavigation();
   const segments = useSegments() as string[];
   const { timer, remainingMs, pause, start } = useApp();
@@ -105,6 +107,8 @@ export function PillNotification() {
           bottom: insets.bottom + 90,
           opacity,
           transform: [{ translateY }],
+          left: layout.isTablet ? 32 : 16,
+          right: layout.isTablet ? 32 : 16,
         },
       ]}
     >
@@ -168,8 +172,6 @@ export function PillNotification() {
 const styles = StyleSheet.create({
   wrapper: {
     position: "absolute",
-    left: 16,
-    right: 16,
     alignItems: "center",
     zIndex: 50,
   },

@@ -30,6 +30,7 @@ import {
 } from "@/constants/colors";
 import { PRESETS, useApp, type SessionType } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { formatTime } from "@/lib/format";
 import { playAlarmSound } from "@/lib/alarmPlayer";
 import { ALARM_SOUNDS, type AlarmSoundName } from "@/lib/alarmSounds";
@@ -48,6 +49,7 @@ export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
+  const layout = useResponsiveLayout();
   const {
     settings,
     setSettings,
@@ -112,6 +114,9 @@ export default function SettingsScreen() {
         {
           paddingTop: insets.top + 16,
           paddingBottom: insets.bottom + 200,
+          maxWidth: layout.maxContentWidth,
+          alignSelf: "center",
+          width: "100%",
         },
       ]}
       showsVerticalScrollIndicator={false}
@@ -1056,7 +1061,8 @@ function LiveCountdownRow({
               { color: colors.mutedForeground, marginTop: 4 },
             ]}
           >
-            Floating overlay needs a custom dev build (not Expo Go).
+            Floating overlay is available in this APK/custom build, but not in
+            Expo Go.
           </Text>
         ) : null}
       </View>

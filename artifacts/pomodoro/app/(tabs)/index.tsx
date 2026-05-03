@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CircularProgress } from "@/components/CircularProgress";
 import { useApp, type SessionType } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { formatTime, startOfDay } from "@/lib/format";
 
 const SESSION_LABELS: Record<SessionType, string> = {
@@ -28,6 +30,8 @@ const SESSION_LABELS: Record<SessionType, string> = {
 export default function TimerScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const layout = useResponsiveLayout();
   const navigation = useNavigation();
   const {
     timer,
@@ -135,200 +139,236 @@ export default function TimerScreen() {
   const onWork = timer.sessionType === "work";
 
   const endingSoon = timer.isRunning && remainingMs > 0 && remainingMs <= 10_000;
+  const circleSize = Math.min(
+    layout.isWide ? 340 : layout.isTablet ? 360 : 300,
+    width - 64,
+    height - 300,
+  );
+  const timerSize = Math.max(240, circleSize);
 
   return (
     <View
       style={[
         styles.container,
-        { backgroundColor: colors.background, paddingTop: insets.top + 8 },
+        {
+          backgroundColor: colors.background,
+          paddingTop: insets.top + 8,
+          paddingHorizontal: layout.isTablet ? 32 : 24,
+        },
       ]}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => goTo("stats")}
-          accessibilityRole="button"
-          accessibilityLabel={`Today: ${todayCount} of ${settings.dailyGoal} pomodoros. Open stats.`}
-          style={({ pressed }) => [
-            styles.todayChip,
-            {
-              backgroundColor: colors.muted,
-              opacity: pressed ? 0.7 : 1,
-            },
+      <View style={[styles.content, { maxWidth: layout.maxContentWidth }]}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Pressable
+            onPress={() => goTo("stats")}
+            accessibilityRole="button"
+            accessibilityLabel={`Today: ${todayCount} of ${settings.dailyGoal} pomodoros. Open stats.`}
+            style={({ pressed }) => [
+              styles.todayChip,
+              {
+                backgroundColor: colors.muted,
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            <View
+              style={[styles.todayChipDot, { backgroundColor: colors.primary }]}
+            />
+            <Text style={[styles.todayChipText, { color: colors.foreground }]}>
+              {todayCount}
+              <Text style={{ color: colors.mutedForeground }}>
+                /{settings.dailyGoal}
+              </Text>{" "}
+              today
+            </Text>
+          </Pressable>
+
+          <View style={styles.roundDots}>
+            {Array.from({ length: totalRoundDots }).map((_, i) => {
+              const filled = i < currentRoundIndex;
+              const active = i === currentRoundIndex && onWork;
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.dot,
+                    {
+                      backgroundColor: filled
+                        ? colors.workColor
+                        : active
+                          ? colors.workColor
+                          : colors.muted,
+                      opacity: filled ? 1 : active ? 0.6 : 1,
+                      width: active ? 18 : 8,
+                    },
+                  ]}
+                />
+              );
+            })}
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.timerGrid,
+            layout.isWide ? styles.timerGridWide : null,
           ]}
         >
-          <View
-            style={[styles.todayChipDot, { backgroundColor: colors.primary }]}
-          />
-          <Text style={[styles.todayChipText, { color: colors.foreground }]}>
-            {todayCount}
-            <Text style={{ color: colors.mutedForeground }}>
-              /{settings.dailyGoal}
-            </Text>{" "}
-            today
-          </Text>
-        </Pressable>
-
-        <View style={styles.roundDots}>
-          {Array.from({ length: totalRoundDots }).map((_, i) => {
-            const filled = i < currentRoundIndex;
-            const active = i === currentRoundIndex && onWork;
-            return (
-              <View
-                key={i}
+          <View style={styles.timerPane}>
+            {/* Session label — long-press to open settings */}
+            <View style={styles.sessionLabelRow}>
+              <Pressable
+                onLongPress={() => {
+                  haptic();
+                  goTo("settings");
+                }}
+                delayLongPress={350}
+                accessibilityRole="button"
+                accessibilityLabel={`${SESSION_LABELS[timer.sessionType]} session. Long-press to open settings.`}
                 style={[
-                  styles.dot,
+                  styles.sessionPill,
+                  { backgroundColor: sessionColor + "22", borderColor: sessionColor },
+                ]}
+              >
+                <View
+                  style={[styles.sessionPillDot, { backgroundColor: sessionColor }]}
+                />
+                <Text style={[styles.sessionLabel, { color: sessionColor }]}>
+                  {SESSION_LABELS[timer.sessionType]}
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* Timer — tap anywhere to start/pause */}
+            <Pressable
+              onPress={handlePrimary}
+              style={styles.timerWrap}
+              accessibilityRole="button"
+              accessibilityLabel={
+                timer.isRunning
+                  ? `Pause. ${formatTime(remainingMs)} remaining.`
+                  : `Start. ${formatTime(remainingMs)} remaining.`
+              }
+            >
+              <Animated.View style={{ transform: [{ scale: pulse }] }}>
+                <CircularProgress
+                  size={timerSize}
+                  strokeWidth={layout.isTablet ? 16 : 14}
+                  progress={progress}
+                  color={endingSoon ? colors.destructive : sessionColor}
+                  trackColor={colors.ringTrack}
+                >
+                  <Text
+                    style={[
+                      styles.time,
+                      {
+                        color: colors.foreground,
+                        fontSize: layout.isTablet ? 72 : 64,
+                      },
+                    ]}
+                  >
+                    {formatTime(remainingMs)}
+                  </Text>
+                  <Text
+                    style={[styles.timeSubtitle, { color: colors.mutedForeground }]}
+                  >
+                    {timer.isRunning
+                      ? endingSoon
+                        ? "ending soon"
+                        : "in progress"
+                      : timer.pausedRemainingMs != null &&
+                          timer.pausedRemainingMs < timer.totalMs
+                        ? "paused"
+                        : "ready"}
+                  </Text>
+                  <Text
+                    style={[styles.nextLabel, { color: colors.mutedForeground }]}
+                    numberOfLines={1}
+                  >
+                    Next: {SESSION_LABELS[nextSession]} · {nextDuration}m
+                  </Text>
+                </CircularProgress>
+              </Animated.View>
+            </Pressable>
+          </View>
+
+          <View style={styles.controlsPane}>
+            {/* Task input */}
+            <View style={[styles.taskRow, { backgroundColor: colors.card }]}>
+              <Feather name="edit-3" size={16} color={colors.mutedForeground} />
+              <TextInput
+                value={timer.taskLabel}
+                onChangeText={setTaskLabel}
+                placeholder="What are you working on?"
+                placeholderTextColor={colors.mutedForeground}
+                style={[styles.taskInput, { color: colors.foreground }]}
+                returnKeyType="done"
+                maxLength={60}
+                accessibilityLabel="Task name"
+              />
+            </View>
+
+            {/* Controls */}
+            <View
+              style={[
+                styles.controls,
+                { paddingBottom: layout.isWide ? 0 : 110 },
+              ]}
+            >
+              <Pressable
+                onPress={handleReset}
+                accessibilityRole="button"
+                accessibilityLabel="Reset timer"
+                style={({ pressed }) => [
+                  styles.secondaryBtn,
                   {
-                    backgroundColor: filled
-                      ? colors.workColor
-                      : active
-                        ? colors.workColor
-                        : colors.muted,
-                    opacity: filled ? 1 : active ? 0.6 : 1,
-                    width: active ? 18 : 8,
+                    backgroundColor: colors.muted,
+                    opacity: pressed ? 0.7 : 1,
                   },
                 ]}
-              />
-            );
-          })}
+              >
+                <Feather name="rotate-ccw" size={20} color={colors.foreground} />
+              </Pressable>
+
+              <Pressable
+                onPress={handlePrimary}
+                accessibilityRole="button"
+                accessibilityLabel={timer.isRunning ? "Pause timer" : "Start timer"}
+                style={({ pressed }) => [
+                  styles.primaryBtn,
+                  {
+                    backgroundColor: sessionColor,
+                    transform: [{ scale: pressed ? 0.96 : 1 }],
+                    shadowColor: sessionColor,
+                  },
+                ]}
+              >
+                <Feather
+                  name={timer.isRunning ? "pause" : "play"}
+                  size={32}
+                  color="#ffffff"
+                  style={{ marginLeft: timer.isRunning ? 0 : 3 }}
+                />
+              </Pressable>
+
+              <Pressable
+                onPress={handleSkip}
+                accessibilityRole="button"
+                accessibilityLabel="Skip to next session"
+                style={({ pressed }) => [
+                  styles.secondaryBtn,
+                  {
+                    backgroundColor: colors.muted,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Feather name="skip-forward" size={20} color={colors.foreground} />
+              </Pressable>
+            </View>
+          </View>
         </View>
-      </View>
-
-      {/* Session label — long-press to open settings */}
-      <View style={styles.sessionLabelRow}>
-        <Pressable
-          onLongPress={() => {
-            haptic();
-            goTo("settings");
-          }}
-          delayLongPress={350}
-          accessibilityRole="button"
-          accessibilityLabel={`${SESSION_LABELS[timer.sessionType]} session. Long-press to open settings.`}
-          style={[
-            styles.sessionPill,
-            { backgroundColor: sessionColor + "22", borderColor: sessionColor },
-          ]}
-        >
-          <View
-            style={[styles.sessionPillDot, { backgroundColor: sessionColor }]}
-          />
-          <Text style={[styles.sessionLabel, { color: sessionColor }]}>
-            {SESSION_LABELS[timer.sessionType]}
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* Timer — tap anywhere to start/pause */}
-      <Pressable
-        onPress={handlePrimary}
-        style={styles.timerWrap}
-        accessibilityRole="button"
-        accessibilityLabel={
-          timer.isRunning
-            ? `Pause. ${formatTime(remainingMs)} remaining.`
-            : `Start. ${formatTime(remainingMs)} remaining.`
-        }
-      >
-        <Animated.View style={{ transform: [{ scale: pulse }] }}>
-          <CircularProgress
-            size={300}
-            strokeWidth={14}
-            progress={progress}
-            color={endingSoon ? colors.destructive : sessionColor}
-            trackColor={colors.ringTrack}
-          >
-            <Text style={[styles.time, { color: colors.foreground }]}>
-              {formatTime(remainingMs)}
-            </Text>
-            <Text
-              style={[styles.timeSubtitle, { color: colors.mutedForeground }]}
-            >
-              {timer.isRunning
-                ? endingSoon
-                  ? "ending soon"
-                  : "in progress"
-                : timer.pausedRemainingMs != null &&
-                    timer.pausedRemainingMs < timer.totalMs
-                  ? "paused"
-                  : "ready"}
-            </Text>
-            <Text
-              style={[styles.nextLabel, { color: colors.mutedForeground }]}
-              numberOfLines={1}
-            >
-              Next: {SESSION_LABELS[nextSession]} · {nextDuration}m
-            </Text>
-          </CircularProgress>
-        </Animated.View>
-      </Pressable>
-
-      {/* Task input */}
-      <View style={styles.taskRow}>
-        <Feather name="edit-3" size={16} color={colors.mutedForeground} />
-        <TextInput
-          value={timer.taskLabel}
-          onChangeText={setTaskLabel}
-          placeholder="What are you working on?"
-          placeholderTextColor={colors.mutedForeground}
-          style={[styles.taskInput, { color: colors.foreground }]}
-          returnKeyType="done"
-          maxLength={60}
-          accessibilityLabel="Task name"
-        />
-      </View>
-
-      {/* Controls */}
-      <View style={styles.controls}>
-        <Pressable
-          onPress={handleReset}
-          accessibilityRole="button"
-          accessibilityLabel="Reset timer"
-          style={({ pressed }) => [
-            styles.secondaryBtn,
-            {
-              backgroundColor: colors.muted,
-              opacity: pressed ? 0.7 : 1,
-            },
-          ]}
-        >
-          <Feather name="rotate-ccw" size={20} color={colors.foreground} />
-        </Pressable>
-
-        <Pressable
-          onPress={handlePrimary}
-          accessibilityRole="button"
-          accessibilityLabel={timer.isRunning ? "Pause timer" : "Start timer"}
-          style={({ pressed }) => [
-            styles.primaryBtn,
-            {
-              backgroundColor: sessionColor,
-              transform: [{ scale: pressed ? 0.96 : 1 }],
-              shadowColor: sessionColor,
-            },
-          ]}
-        >
-          <Feather
-            name={timer.isRunning ? "pause" : "play"}
-            size={32}
-            color="#ffffff"
-            style={{ marginLeft: timer.isRunning ? 0 : 3 }}
-          />
-        </Pressable>
-
-        <Pressable
-          onPress={handleSkip}
-          accessibilityRole="button"
-          accessibilityLabel="Skip to next session"
-          style={({ pressed }) => [
-            styles.secondaryBtn,
-            {
-              backgroundColor: colors.muted,
-              opacity: pressed ? 0.7 : 1,
-            },
-          ]}
-        >
-          <Feather name="skip-forward" size={20} color={colors.foreground} />
-        </Pressable>
       </View>
     </View>
   );
@@ -337,7 +377,11 @@ export default function TimerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 24,
+    alignItems: "center",
+  },
+  content: {
+    flex: 1,
+    width: "100%",
   },
   header: {
     flexDirection: "row",
@@ -399,6 +443,22 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    minHeight: 340,
+  },
+  timerGrid: {
+    flex: 1,
+  },
+  timerGridWide: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 48,
+  },
+  timerPane: {
+    flex: 1,
+  },
+  controlsPane: {
+    flex: 1,
+    justifyContent: "center",
   },
   time: {
     fontSize: 64,
@@ -425,6 +485,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderRadius: 18,
     marginBottom: 24,
   },
   taskInput: {
