@@ -27,7 +27,10 @@
       "permissions": [
         "VIBRATE",
         "POST_NOTIFICATIONS",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "SYSTEM_ALERT_WINDOW",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_SPECIAL_USE"
       ]
     },
     "web": {
@@ -53,7 +56,8 @@
         {
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-dev-client"
     ],
     "experiments": {
       "typedRoutes": true,

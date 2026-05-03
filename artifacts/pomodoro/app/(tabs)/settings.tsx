@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 import React from "react";
 import {
   Alert,
+  AppState,
   Platform,
   Pressable,
   ScrollView,
@@ -27,6 +28,7 @@ import { useColors } from "@/hooks/useColors";
 import { formatTime } from "@/lib/format";
 import { playAlarmSound } from "@/lib/alarmPlayer";
 import { ALARM_SOUNDS, type AlarmSoundName } from "@/lib/alarmSounds";
+import { FloatingPill } from "floating-pill";
 
 function formatClock(minutesFromMidnight: number): string {
   const m = ((minutesFromMidnight % (24 * 60)) + 24 * 60) % (24 * 60);
@@ -332,6 +334,16 @@ export default function SettingsScreen() {
           onChange={(v) => setSettings({ pillNotificationEnabled: v })}
           colors={colors}
         />
+        {Platform.OS === "android" ? (
+          <>
+            <Divider colors={colors} />
+            <FloatingOverlayRow
+              value={settings.floatingOverlayEnabled}
+              onChange={(v) => setSettings({ floatingOverlayEnabled: v })}
+              colors={colors}
+            />
+          </>
+        ) : null}
         <Divider colors={colors} />
         <ToggleRow
           label="Sound"
@@ -577,12 +589,10 @@ export default function SettingsScreen() {
       </Section>
 
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-        Heads up: the live-countdown pill shows as a persistent system
-        notification on Android (visible from any app and the lock screen) and
-        as a floating pill inside the app on the Stats and Settings screens.
-        A true overlay floating on top of other apps requires Android&apos;s
-        special &quot;Display over other apps&quot; permission, which is only
-        available in a custom build of the app — not in Expo Go.
+        Heads up: the floating overlay uses Android&apos;s &quot;Display over
+        other apps&quot; permission and the system overlay window. It is only
+        available in a custom build of the app (not in Expo Go) — when
+        running in Expo Go the toggle stays disabled.
       </Text>
     </ScrollView>
   );
@@ -796,6 +806,113 @@ function ToggleRow({
         thumbColor="#ffffff"
         ios_backgroundColor={colors.muted}
         accessibilityLabel={label}
+      />
+    </View>
+  );
+}
+
+function FloatingOverlayRow({
+  value,
+  onChange,
+  colors,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const [available] = React.useState(() => FloatingPill.isAvailable());
+  const [hasPermission, setHasPermission] = React.useState<boolean>(false);
+  // True when the user just tried to enable the overlay and was sent to
+  // the system permission screen — used to auto-enable the toggle when
+  // they return with permission granted.
+  const pendingEnableRef = React.useRef(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!available) return;
+    const recheck = () => {
+      FloatingPill.hasOverlayPermission().then((granted) => {
+        if (cancelled) return;
+        setHasPermission(granted);
+        if (granted && pendingEnableRef.current) {
+          pendingEnableRef.current = false;
+          onChange(true);
+        }
+      });
+    };
+    recheck();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") recheck();
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, [available, onChange]);
+
+  const handleToggle = async (next: boolean) => {
+    if (!next) {
+      onChange(false);
+      return;
+    }
+    if (!available) {
+      Alert.alert(
+        "Custom build required",
+        "The floating overlay needs Android's \"Display over other apps\" permission, which is only available in a custom build of the app — not in Expo Go. Build the app with `expo run:android` (or EAS Build) and try again.",
+        [{ text: "OK" }],
+      );
+      return;
+    }
+    const granted = await FloatingPill.hasOverlayPermission();
+    if (granted) {
+      setHasPermission(true);
+      onChange(true);
+      return;
+    }
+    Alert.alert(
+      "Allow display over other apps",
+      "Pomodoro needs the \"Display over other apps\" permission so the live timer pill can float above other apps. Tap Open Settings, then enable the permission for Pomodoro and come back to this screen.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Open Settings",
+          onPress: async () => {
+            // Mark intent so the AppState resume re-check auto-enables
+            // the toggle once permission is granted in system settings.
+            pendingEnableRef.current = true;
+            await FloatingPill.requestOverlayPermission();
+          },
+        },
+      ],
+    );
+  };
+
+  const description = !available
+    ? "Not available in Expo Go — requires a custom dev build of the app."
+    : hasPermission
+      ? "A draggable timer pill floats above other apps while a session runs. Tap it to open Pomodoro; tap the icon to play/pause."
+      : "Needs Android's \"Display over other apps\" permission. Toggle on to grant.";
+
+  return (
+    <View style={styles.row}>
+      <View style={{ flex: 1, paddingRight: 12 }}>
+        <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+          Floating overlay (Android)
+        </Text>
+        <Text
+          style={[styles.rowDescription, { color: colors.mutedForeground }]}
+        >
+          {description}
+        </Text>
+      </View>
+      <Switch
+        value={value && available && hasPermission}
+        onValueChange={handleToggle}
+        disabled={!available}
+        trackColor={{ false: colors.muted, true: colors.primary }}
+        thumbColor="#ffffff"
+        ios_backgroundColor={colors.muted}
+        accessibilityLabel="Floating overlay (Android)"
       />
     </View>
   );

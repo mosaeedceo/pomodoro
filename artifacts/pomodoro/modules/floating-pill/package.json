@@ -1,0 +1,7 @@
+{
+  "name": "floating-pill",
+  "version": "0.0.1",
+  "description": "Android system overlay pill for the live Pomodoro countdown",
+  "main": "index.ts",
+  "private": true
+}

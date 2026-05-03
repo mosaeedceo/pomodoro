@@ -15,6 +15,7 @@ import { AppState, Platform, Share, Vibration } from "react-native";
 import type { AccentName, ThemeName } from "@/constants/colors";
 import { playAlarmSound } from "@/lib/alarmPlayer";
 import { DEFAULT_ALARM_SOUND, type AlarmSoundName } from "@/lib/alarmSounds";
+import { FloatingPill } from "floating-pill";
 
 export type SessionType = "work" | "shortBreak" | "longBreak";
 
@@ -29,6 +30,7 @@ export interface Settings {
   vibrationEnabled: boolean;
   tickEnabled: boolean;
   pillNotificationEnabled: boolean;
+  floatingOverlayEnabled: boolean;
   alarmSound: AlarmSoundName;
   alarmVolume: number;
   themeName: ThemeName;
@@ -51,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   vibrationEnabled: true,
   tickEnabled: false,
   pillNotificationEnabled: true,
+  floatingOverlayEnabled: false,
   alarmSound: DEFAULT_ALARM_SOUND,
   alarmVolume: 0.8,
   themeName: "crimson",
@@ -507,6 +510,145 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     lastTickSecondRef.current = seconds;
     Haptics.selectionAsync().catch(() => {});
   }, [remainingMs, timer.isRunning, settings.tickEnabled]);
+
+  // Floating overlay (system-wide, Android-only, custom dev build only).
+  // Updates once per second so the visible time stays accurate.
+  const lastOverlayShownRef = useRef(false);
+  const overlayPermissionRef = useRef<boolean | null>(null);
+
+  // Re-check overlay permission on app resume so revocations take effect.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    if (!FloatingPill.isAvailable()) return;
+    const check = () => {
+      FloatingPill.hasOverlayPermission().then((g) => {
+        overlayPermissionRef.current = g;
+      });
+    };
+    check();
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") check();
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!loaded) return;
+    if (Platform.OS !== "android") return;
+    if (!FloatingPill.isAvailable()) return;
+    // If permission has been revoked, don't keep starting the service.
+    if (overlayPermissionRef.current === false) {
+      if (lastOverlayShownRef.current) {
+        FloatingPill.hide();
+        lastOverlayShownRef.current = false;
+      }
+      return;
+    }
+
+    // Show whenever the overlay is enabled AND a session is in progress —
+    // running OR paused mid-session. This way the user can resume the
+    // session by tapping the play icon on the overlay itself.
+    const sessionInProgress =
+      timer.isRunning ||
+      (timer.pausedRemainingMs != null &&
+        timer.pausedRemainingMs > 0 &&
+        timer.pausedRemainingMs < timer.totalMs);
+    const enabled = settings.floatingOverlayEnabled && sessionInProgress;
+    const sessionColor =
+      timer.sessionType === "work"
+        ? "#c8442a"
+        : timer.sessionType === "shortBreak"
+          ? "#2a9d8f"
+          : "#6b78c8";
+    const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const time = `${minutes.toString().padStart(2, "0")}:${seconds
+      .toString()
+      .padStart(2, "0")}`;
+    const label = sessionLabel(timer.sessionType);
+
+    if (!enabled) {
+      if (lastOverlayShownRef.current) {
+        FloatingPill.hide();
+        lastOverlayShownRef.current = false;
+      }
+      return;
+    }
+
+    const state = {
+      label,
+      time,
+      task: timer.taskLabel,
+      running: timer.isRunning,
+      color: sessionColor,
+    };
+    if (!lastOverlayShownRef.current) {
+      FloatingPill.show(state);
+      lastOverlayShownRef.current = true;
+    } else {
+      FloatingPill.update(state);
+    }
+  }, [
+    loaded,
+    settings.floatingOverlayEnabled,
+    timer.isRunning,
+    timer.pausedRemainingMs,
+    timer.totalMs,
+    timer.sessionType,
+    timer.taskLabel,
+    remainingMs,
+  ]);
+
+  // Wire overlay toggle/open events back to timer actions
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    if (!FloatingPill.isAvailable()) return;
+    const toggleSub = FloatingPill.addListener("onToggle", () => {
+      const current = timerRef.current;
+      if (current.isRunning) {
+        // call current pause via state update
+        setTimer((prev) => {
+          if (!prev.isRunning || prev.startedAt == null) return prev;
+          const elapsed = Date.now() - prev.startedAt;
+          const remaining = Math.max(0, prev.totalMs - elapsed);
+          cancelScheduledEnd();
+          return {
+            ...prev,
+            isRunning: false,
+            startedAt: null,
+            pausedRemainingMs: remaining,
+          };
+        });
+      } else {
+        setTimer((prev) => {
+          if (prev.isRunning) return prev;
+          const remaining = prev.pausedRemainingMs ?? prev.totalMs;
+          const startedAt = Date.now() - (prev.totalMs - remaining);
+          scheduleEndNotification(
+            prev.sessionType,
+            prev.completedRounds,
+            startedAt + prev.totalMs,
+            settingsRef.current,
+          );
+          return {
+            ...prev,
+            isRunning: true,
+            startedAt,
+            pausedRemainingMs: null,
+          };
+        });
+      }
+    });
+    const openSub = FloatingPill.addListener("onOpen", () => {
+      // Native side already brings the launcher activity forward; nothing
+      // else needed here.
+    });
+    return () => {
+      toggleSub.remove();
+      openSub.remove();
+    };
+  }, []);
 
   // Pill notification updater — throttled to once per minute change to avoid notification flicker
   const lastPillMinuteRef = useRef<number>(-1);

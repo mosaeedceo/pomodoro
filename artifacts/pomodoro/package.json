@@ -58,6 +58,8 @@
   "dependencies": {
     "@react-native-community/slider": "^5.2.0",
     "expo-audio": "^55.0.14",
-    "expo-notifications": "~0.32.17"
+    "expo-dev-client": "~6.0.16",
+    "expo-notifications": "~0.32.17",
+    "floating-pill": "link:./modules/floating-pill"
   }
 }
