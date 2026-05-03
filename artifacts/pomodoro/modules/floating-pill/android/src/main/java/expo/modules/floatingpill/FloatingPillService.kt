@@ -28,6 +28,7 @@ class FloatingPillService : Service() {
   private var labelView: TextView? = null
   private var timeView: TextView? = null
   private var taskView: TextView? = null
+  private var textColView: LinearLayout? = null
   private var toggleView: TextView? = null
   private var dotView: View? = null
   private val handler = Handler(Looper.getMainLooper())
@@ -124,7 +125,7 @@ class FloatingPillService : Service() {
       setPadding(
         if (state.shape == "compact") 14.dp else 18.dp,
         if (state.shape == "compact") 8.dp else 10.dp,
-        if (state.shape == "compact") 8.dp else 10.dp,
+        if (state.shape == "compact") 6.dp else 10.dp,
         if (state.shape == "compact") 8.dp else 10.dp,
       )
       background = PillDrawable(state.shape)
@@ -141,6 +142,7 @@ class FloatingPillService : Service() {
     val textCol = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
     }
+    textColView = textCol
     labelView = TextView(this).apply {
       textSize = 11f
       setTextColor(Color.parseColor("#8d7d78"))
@@ -166,13 +168,15 @@ class FloatingPillService : Service() {
     root.addView(
       textCol,
       LinearLayout.LayoutParams(
-        if (state.shape == "compact") 112.dp else 150.dp,
+        if (state.shape == "compact") LinearLayout.LayoutParams.WRAP_CONTENT else 150.dp,
         LinearLayout.LayoutParams.WRAP_CONTENT,
-      ),
+      ).apply {
+        marginEnd = if (state.shape == "compact") 6.dp else 0
+      },
     )
 
     toggleView = TextView(this).apply {
-      textSize = 18f
+      textSize = if (state.shape == "compact") 16f else 18f
       gravity = Gravity.CENTER
       setTextColor(Color.WHITE)
       background = CircleDrawable(state.color)
@@ -181,7 +185,13 @@ class FloatingPillService : Service() {
         sendBroadcast(Intent(FloatingPillEvents.ACTION_TOGGLE).setPackage(packageName))
       }
     }
-    root.addView(toggleView, LinearLayout.LayoutParams(38.dp, 38.dp))
+    root.addView(
+      toggleView,
+      LinearLayout.LayoutParams(
+        if (state.shape == "compact") 32.dp else 38.dp,
+        if (state.shape == "compact") 32.dp else 38.dp,
+      ),
+    )
 
     root.setOnClickListener {
       sendBroadcast(Intent(FloatingPillEvents.ACTION_OPEN).setPackage(packageName))
@@ -205,6 +215,17 @@ class FloatingPillService : Service() {
     toggleView?.text = if (state.running) "Ⅱ" else "▶"
     dotView?.background = DotDrawable(state.color)
     toggleView?.background = CircleDrawable(state.color)
+    textColView?.layoutParams = textColView?.layoutParams?.apply {
+      if (this is LinearLayout.LayoutParams) {
+        width = if (state.shape == "compact") LinearLayout.LayoutParams.WRAP_CONTENT else 150.dp
+        marginEnd = if (state.shape == "compact") 6.dp else 0
+      }
+    }
+    toggleView?.layoutParams = toggleView?.layoutParams?.apply {
+      width = if (state.shape == "compact") 32.dp else 38.dp
+      height = if (state.shape == "compact") 32.dp else 38.dp
+    }
+    toggleView?.textSize = if (state.shape == "compact") 16f else 18f
   }
 
   private fun handleTouch(view: View, event: MotionEvent): Boolean {

@@ -131,8 +131,9 @@ export function PillNotification() {
                     ? 18
                     : 999,
               paddingVertical: settings.pillShape === "compact" ? 8 : 10,
-              paddingHorizontal: settings.pillShape === "compact" ? 12 : 14,
-              maxWidth: settings.pillShape === "compact" ? 300 : undefined,
+              gap: settings.pillShape === "compact" ? 6 : 12,
+              paddingHorizontal: settings.pillShape === "compact" ? 8 : 14,
+              maxWidth: settings.pillShape === "compact" ? 210 : undefined,
             },
             {
               backgroundColor: colors.card,
@@ -149,7 +150,12 @@ export function PillNotification() {
             />
           ) : null}
           <View style={[styles.dot, { backgroundColor: sessionColor }]} />
-          <View style={styles.textCol}>
+          <View
+            style={[
+              styles.textCol,
+              settings.pillShape === "compact" ? styles.compactTextCol : null,
+            ]}
+          >
             <Text style={[styles.label, { color: colors.mutedForeground }]}>
               {sessionLabel}
             </Text>
@@ -164,6 +170,7 @@ export function PillNotification() {
             accessibilityLabel={timer.isRunning ? t("timer.pause") : t("timer.resume")}
             style={({ pressed }) => [
               styles.iconBtn,
+              settings.pillShape === "compact" ? styles.compactIconBtn : null,
               {
                 backgroundColor: sessionColor,
                 opacity: pressed ? 0.85 : 1,
@@ -214,6 +221,9 @@ const styles = StyleSheet.create({
   textCol: {
     flex: 1,
   },
+  compactTextCol: {
+    flex: 0,
+  },
   label: {
     fontSize: 11,
     fontFamily: "Inter_500Medium",
@@ -232,5 +242,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
+  },
+  compactIconBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
 });
