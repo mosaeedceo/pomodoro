@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
-import { useRouter, useSegments } from "expo-router";
+import { router, useNavigation, useSegments } from "expo-router";
 import React, { useEffect, useRef } from "react";
 import {
   Animated,
@@ -27,7 +27,7 @@ export function PillNotification() {
   const colors = useColors();
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
+  const navigation = useNavigation();
   const segments = useSegments() as string[];
   const { timer, remainingMs, pause, start } = useApp();
   const opacity = useRef(new Animated.Value(0)).current;
@@ -62,10 +62,35 @@ export function PillNotification() {
         : colors.longBreakColor;
 
   const handleOpen = () => {
-    router.push("/");
+    // Try jumpTo on the nearest tabs navigator; fall back to router.navigate
+    // (which won't push a duplicate stack entry for the same route).
+    const nav = navigation as {
+      jumpTo?: (name: string) => void;
+      getParent?: () => unknown;
+    };
+    try {
+      const parent = nav.getParent?.() as
+        | { jumpTo?: (name: string) => void }
+        | undefined;
+      if (parent?.jumpTo) {
+        parent.jumpTo("index");
+        return;
+      }
+      if (nav.jumpTo) {
+        nav.jumpTo("index");
+        return;
+      }
+    } catch {
+      // fall through
+    }
+    try {
+      router.navigate("/(tabs)");
+    } catch {
+      // ignore
+    }
   };
 
-  const handleToggle = (e: any) => {
+  const handleToggle = (e: { stopPropagation?: () => void }) => {
     e.stopPropagation?.();
     if (timer.isRunning) pause();
     else start();
@@ -83,7 +108,12 @@ export function PillNotification() {
         },
       ]}
     >
-      <Pressable onPress={handleOpen} style={styles.pressable}>
+      <Pressable
+        onPress={handleOpen}
+        style={styles.pressable}
+        accessibilityRole="button"
+        accessibilityLabel={`Open timer, ${SESSION_LABELS[timer.sessionType]} ${formatTime(remainingMs)} remaining`}
+      >
         <View
           style={[
             styles.pill,
@@ -113,6 +143,8 @@ export function PillNotification() {
           <Pressable
             onPress={handleToggle}
             hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={timer.isRunning ? "Pause timer" : "Resume timer"}
             style={({ pressed }) => [
               styles.iconBtn,
               {
@@ -177,6 +209,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.3,
+    fontVariant: ["tabular-nums"],
   },
   iconBtn: {
     width: 32,

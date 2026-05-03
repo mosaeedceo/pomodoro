@@ -16,6 +16,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OnboardingSheet } from "@/components/OnboardingSheet";
 import { PillNotification } from "@/components/PillNotification";
 import { AppProvider } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
@@ -34,6 +35,7 @@ function RootLayoutNav() {
         <Stack.Screen name="(tabs)" />
       </Stack>
       <PillNotification />
+      <OnboardingSheet />
     </View>
   );
 }

@@ -10,7 +10,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, Platform, Vibration } from "react-native";
+import { AppState, Platform, Share, Vibration } from "react-native";
 
 import type { AccentName, ThemeName } from "@/constants/colors";
 
@@ -29,9 +29,14 @@ export interface Settings {
   pillNotificationEnabled: boolean;
   themeName: ThemeName;
   accentName: AccentName;
+  dailyGoal: number;
+  quietHoursEnabled: boolean;
+  quietHoursStart: number;
+  quietHoursEnd: number;
+  onboardingCompleted: boolean;
 }
 
-const DEFAULT_SETTINGS: Settings = {
+export const DEFAULT_SETTINGS: Settings = {
   workMinutes: 25,
   shortBreakMinutes: 5,
   longBreakMinutes: 15,
@@ -44,7 +49,27 @@ const DEFAULT_SETTINGS: Settings = {
   pillNotificationEnabled: true,
   themeName: "crimson",
   accentName: "default",
+  dailyGoal: 6,
+  quietHoursEnabled: false,
+  quietHoursStart: 22 * 60,
+  quietHoursEnd: 7 * 60,
+  onboardingCompleted: false,
 };
+
+export const PRESETS: { name: string; settings: Partial<Settings> }[] = [
+  {
+    name: "Classic 25/5/15",
+    settings: { workMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, roundsBeforeLongBreak: 4 },
+  },
+  {
+    name: "Long focus 50/10/30",
+    settings: { workMinutes: 50, shortBreakMinutes: 10, longBreakMinutes: 30, roundsBeforeLongBreak: 3 },
+  },
+  {
+    name: "Sprint 15/3/15",
+    settings: { workMinutes: 15, shortBreakMinutes: 3, longBreakMinutes: 15, roundsBeforeLongBreak: 4 },
+  },
+];
 
 export interface SessionRecord {
   id: string;
@@ -72,10 +97,14 @@ const STORAGE_KEYS = {
 
 const NOTIFICATION_CHANNEL_ID = "pomodoro-pill";
 const NOTIFICATION_END_CHANNEL_ID = "pomodoro-alerts";
+const PILL_NOTIFICATION_ID = "pomodoro-pill-active";
+const SCHEDULED_END_ID = "pomodoro-end-scheduled";
 
 interface AppContextValue {
   settings: Settings;
   setSettings: (updater: Partial<Settings>) => void;
+  resetSettings: () => void;
+  applyPreset: (preset: Partial<Settings>) => void;
   timer: TimerState;
   remainingMs: number;
   start: () => void;
@@ -85,6 +114,8 @@ interface AppContextValue {
   setTaskLabel: (label: string) => void;
   stats: SessionRecord[];
   clearStats: () => void;
+  clearTodayStats: () => void;
+  exportStats: () => Promise<void>;
   loaded: boolean;
 }
 
@@ -119,13 +150,21 @@ function makeId(): string {
   return Date.now().toString() + Math.random().toString(36).slice(2, 9);
 }
 
+function isInQuietHours(settings: Settings, now = new Date()): boolean {
+  if (!settings.quietHoursEnabled) return false;
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const { quietHoursStart: a, quietHoursEnd: b } = settings;
+  if (a === b) return false;
+  // crossing midnight if a > b
+  return a < b ? minutes >= a && minutes < b : minutes >= a || minutes < b;
+}
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldShowList: false,
     shouldPlaySound: false,
     shouldSetBadge: false,
-    shouldShowAlert: true,
   }),
 });
 
@@ -162,8 +201,6 @@ async function configureNotifications() {
     // ignore — permissions denied or not available
   }
 }
-
-const PILL_NOTIFICATION_ID = "pomodoro-pill-active";
 
 const sessionLabel = (type: SessionType): string => {
   switch (type) {
@@ -222,19 +259,45 @@ async function dismissPillNotification() {
   }
 }
 
-async function showSessionEndNotification(nextType: SessionType) {
+async function cancelScheduledEnd() {
   if (Platform.OS === "web") return;
   try {
+    await Notifications.cancelScheduledNotificationAsync(SCHEDULED_END_ID);
+  } catch {
+    // ignore
+  }
+}
+
+async function scheduleEndNotification(
+  currentType: SessionType,
+  completedRounds: number,
+  endAt: number,
+  settings: Settings,
+) {
+  if (Platform.OS === "web") return;
+  await cancelScheduledEnd();
+  if (!settings.soundEnabled && !settings.vibrationEnabled) return;
+  const seconds = Math.max(1, Math.round((endAt - Date.now()) / 1000));
+  const willEndDate = new Date(endAt);
+  const inQuiet = isInQuietHours(settings, willEndDate);
+  const shouldSound = settings.soundEnabled && !inQuiet;
+  const next = nextSessionType(currentType, completedRounds, settings);
+  try {
     await Notifications.scheduleNotificationAsync({
+      identifier: SCHEDULED_END_ID,
       content: {
         title: "Time's up",
-        body: `Next: ${sessionLabel(nextType)}`,
-        sound: true,
+        body: `Next: ${sessionLabel(next)}`,
+        sound: shouldSound,
         ...(Platform.OS === "android"
           ? { channelId: NOTIFICATION_END_CHANNEL_ID }
           : {}),
       },
-      trigger: null,
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds,
+        repeats: false,
+      },
     });
   } catch {
     // ignore
@@ -276,7 +339,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
         if (t) {
           const parsed = JSON.parse(t);
-          setTimer((prev) => ({ ...prev, ...parsed }));
+          setTimer((prev) => ({ ...prev, ...parsed, isRunning: false, startedAt: null }));
         }
         if (st) {
           setStats(JSON.parse(st));
@@ -363,24 +426,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       (current.sessionType === "work" && s.autoStartBreaks) ||
       (current.sessionType !== "work" && s.autoStartWork);
 
-    if (s.vibrationEnabled && Platform.OS !== "web") {
+    const inQuiet = isInQuietHours(s);
+    if (s.vibrationEnabled && Platform.OS !== "web" && !inQuiet) {
       Vibration.vibrate([0, 250, 250, 250]);
     }
-    if (s.soundEnabled) {
-      showSessionEndNotification(next);
-    }
+    // The scheduled local notification fires the sound/banner reliably.
+    // Cancel it now in case auto-complete fired before the OS trigger.
+    cancelScheduledEnd();
 
+    const startedAt = shouldAutoStart ? Date.now() : null;
     setTimer({
       sessionType: next,
       isRunning: shouldAutoStart,
-      startedAt: shouldAutoStart ? Date.now() : null,
+      startedAt,
       pausedRemainingMs: shouldAutoStart ? null : nextTotal,
       totalMs: nextTotal,
       completedRounds: newCompletedRounds,
       taskLabel: current.taskLabel,
     });
 
-    if (!shouldAutoStart) {
+    if (shouldAutoStart && startedAt != null) {
+      scheduleEndNotification(
+        next,
+        newCompletedRounds,
+        startedAt + nextTotal,
+        s,
+      );
+    } else {
       dismissPillNotification();
     }
   }, []);
@@ -408,24 +480,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     Haptics.selectionAsync().catch(() => {});
   }, [remainingMs, timer.isRunning, settings.tickEnabled]);
 
-  // Pill notification updater
+  // Pill notification updater — throttled to once per minute change to avoid notification flicker
+  const lastPillMinuteRef = useRef<number>(-1);
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  const remainingMinute = Math.ceil(remainingSeconds / 60);
   useEffect(() => {
     if (!loaded) return;
     if (Platform.OS === "web") return;
     if (!settings.pillNotificationEnabled) {
       dismissPillNotification();
+      lastPillMinuteRef.current = -1;
       return;
     }
     if (!timer.isRunning) {
       dismissPillNotification();
+      lastPillMinuteRef.current = -1;
       return;
     }
+    if (lastPillMinuteRef.current === remainingMinute) return;
+    lastPillMinuteRef.current = remainingMinute;
     showPillNotification(timer.sessionType, remainingMs, timer.taskLabel);
   }, [
     timer.isRunning,
     timer.sessionType,
     timer.taskLabel,
-    Math.ceil(remainingMs / 1000),
+    remainingMinute,
+    remainingMs,
     settings.pillNotificationEnabled,
     loaded,
   ]);
@@ -433,28 +513,53 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setSettings = useCallback((updates: Partial<Settings>) => {
     setSettingsState((prev) => {
       const newSettings = { ...prev, ...updates };
-      // If duration for current session changed and timer is not running, sync totalMs
+      // Only resync totalMs if the timer is in a fully reset state (not paused mid-session).
+      // If pausedRemainingMs equals totalMs, the timer is fresh — safe to resync.
       const currentTimer = timerRef.current;
-      if (!currentTimer.isRunning) {
+      const isFreshlyReset =
+        !currentTimer.isRunning &&
+        (currentTimer.pausedRemainingMs == null ||
+          currentTimer.pausedRemainingMs === currentTimer.totalMs);
+      if (isFreshlyReset) {
         const newTotal = durationForType(currentTimer.sessionType, newSettings);
-        setTimer((t) => ({
-          ...t,
-          totalMs: newTotal,
-          pausedRemainingMs: newTotal,
-        }));
+        if (newTotal !== currentTimer.totalMs) {
+          setTimer((t) => ({
+            ...t,
+            totalMs: newTotal,
+            pausedRemainingMs: newTotal,
+          }));
+        }
       }
       return newSettings;
     });
   }, []);
 
+  const resetSettings = useCallback(() => {
+    setSettingsState((prev) => ({
+      ...DEFAULT_SETTINGS,
+      onboardingCompleted: prev.onboardingCompleted,
+    }));
+  }, []);
+
+  const applyPreset = useCallback((preset: Partial<Settings>) => {
+    setSettings(preset);
+  }, [setSettings]);
+
   const start = useCallback(() => {
     setTimer((prev) => {
       if (prev.isRunning) return prev;
       const remaining = prev.pausedRemainingMs ?? prev.totalMs;
+      const startedAt = Date.now() - (prev.totalMs - remaining);
+      scheduleEndNotification(
+        prev.sessionType,
+        prev.completedRounds,
+        startedAt + prev.totalMs,
+        settingsRef.current,
+      );
       return {
         ...prev,
         isRunning: true,
-        startedAt: Date.now() - (prev.totalMs - remaining),
+        startedAt,
         pausedRemainingMs: null,
       };
     });
@@ -465,6 +570,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!prev.isRunning || prev.startedAt == null) return prev;
       const elapsed = Date.now() - prev.startedAt;
       const remaining = Math.max(0, prev.totalMs - elapsed);
+      cancelScheduledEnd();
       return {
         ...prev,
         isRunning: false,
@@ -485,6 +591,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         totalMs: total,
       };
     });
+    cancelScheduledEnd();
     dismissPillNotification();
   }, []);
 
@@ -507,6 +614,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         completedRounds: newCompletedRounds,
       };
     });
+    cancelScheduledEnd();
     dismissPillNotification();
   }, []);
 
@@ -518,10 +626,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setStats([]);
   }, []);
 
+  const clearTodayStats = useCallback(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const cutoff = todayStart.getTime();
+    setStats((prev) => prev.filter((s) => s.completedAt < cutoff));
+  }, []);
+
+  const exportStats = useCallback(async () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      version: 1,
+      sessions: stats,
+    };
+    const json = JSON.stringify(payload, null, 2);
+    if (Platform.OS === "web") {
+      try {
+        await navigator.clipboard.writeText(json);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    try {
+      await Share.share({
+        message: json,
+        title: "Pomodoro stats export",
+      });
+    } catch {
+      // ignore
+    }
+  }, [stats]);
+
   const value = useMemo<AppContextValue>(
     () => ({
       settings,
       setSettings,
+      resetSettings,
+      applyPreset,
       timer,
       remainingMs,
       start,
@@ -531,11 +673,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setTaskLabel,
       stats,
       clearStats,
+      clearTodayStats,
+      exportStats,
       loaded,
     }),
     [
       settings,
       setSettings,
+      resetSettings,
+      applyPreset,
       timer,
       remainingMs,
       start,
@@ -545,6 +691,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setTaskLabel,
       stats,
       clearStats,
+      clearTodayStats,
+      exportStats,
       loaded,
     ],
   );

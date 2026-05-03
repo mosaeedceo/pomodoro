@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import React from "react";
 import {
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -15,23 +16,49 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   accentList,
+  resolveAccent,
   themeList,
   type AccentName,
   type ThemeName,
 } from "@/constants/colors";
-import { useApp, type Settings } from "@/contexts/AppContext";
+import { PRESETS, useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+
+function formatClock(minutesFromMidnight: number): string {
+  const m = ((minutesFromMidnight % (24 * 60)) + 24 * 60) % (24 * 60);
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  const period = h >= 12 ? "PM" : "AM";
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display}:${mm.toString().padStart(2, "0")} ${period}`;
+}
 
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
-  const { settings, setSettings } = useApp();
+  const { settings, setSettings, resetSettings, applyPreset, exportStats } =
+    useApp();
 
   const haptic = () => {
     if (Platform.OS !== "web") {
       Haptics.selectionAsync().catch(() => {});
     }
+  };
+
+  const confirmReset = () => {
+    if (Platform.OS === "web") {
+      resetSettings();
+      return;
+    }
+    Alert.alert(
+      "Reset to defaults?",
+      "Your durations, behavior, alerts, theme, and goal will return to defaults.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Reset", style: "destructive", onPress: resetSettings },
+      ],
+    );
   };
 
   return (
@@ -46,7 +73,74 @@ export default function SettingsScreen() {
       ]}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={[styles.title, { color: colors.foreground }]}>Settings</Text>
+      <View style={styles.headerRow}>
+        <Text style={[styles.title, { color: colors.foreground }]}>Settings</Text>
+        <Pressable
+          onPress={confirmReset}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Reset to defaults"
+          style={({ pressed }) => [
+            styles.headerBtn,
+            {
+              backgroundColor: colors.muted,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+        >
+          <Feather name="rotate-ccw" size={14} color={colors.foreground} />
+          <Text style={[styles.headerBtnText, { color: colors.foreground }]}>
+            Reset
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Quick presets */}
+      <Section title="Quick presets" colors={colors}>
+        <View style={styles.presetCol}>
+          {PRESETS.map((p, i) => (
+            <Pressable
+              key={p.name}
+              onPress={() => {
+                haptic();
+                applyPreset(p.settings);
+              }}
+              style={({ pressed }) => [
+                styles.presetRow,
+                {
+                  borderTopWidth:
+                    i === 0 ? 0 : StyleSheet.hairlineWidth,
+                  borderTopColor: colors.border,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={`Apply preset ${p.name}`}
+            >
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[styles.presetName, { color: colors.foreground }]}
+                >
+                  {p.name}
+                </Text>
+                <Text
+                  style={[
+                    styles.presetMeta,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {p.settings.workMinutes}m focus · {p.settings.shortBreakMinutes}m short · {p.settings.longBreakMinutes}m long
+                </Text>
+              </View>
+              <Feather
+                name="chevron-right"
+                size={16}
+                color={colors.mutedForeground}
+              />
+            </Pressable>
+          ))}
+        </View>
+      </Section>
 
       {/* Durations */}
       <Section title="Durations" colors={colors}>
@@ -111,6 +205,24 @@ export default function SettingsScreen() {
         />
       </Section>
 
+      {/* Goal */}
+      <Section title="Daily goal" colors={colors}>
+        <NumberRow
+          label="Pomodoros per day"
+          value={settings.dailyGoal}
+          unit=""
+          min={0}
+          max={20}
+          step={1}
+          color={colors.primary}
+          onChange={(v) => {
+            haptic();
+            setSettings({ dailyGoal: v });
+          }}
+          colors={colors}
+        />
+      </Section>
+
       {/* Behavior */}
       <Section title="Behavior" colors={colors}>
         <ToggleRow
@@ -130,11 +242,11 @@ export default function SettingsScreen() {
         />
       </Section>
 
-      {/* Notifications */}
+      {/* Alerts */}
       <Section title="Alerts" colors={colors}>
         <ToggleRow
           label="Pop-up pill notification"
-          description="Show a sticky notification with the live countdown while a session is running"
+          description="Shows a sticky notification with the live countdown while a session is running"
           value={settings.pillNotificationEnabled}
           onChange={(v) => setSettings({ pillNotificationEnabled: v })}
           colors={colors}
@@ -142,7 +254,7 @@ export default function SettingsScreen() {
         <Divider colors={colors} />
         <ToggleRow
           label="Sound"
-          description="Play a notification when a session ends"
+          description="Play a notification sound when a session ends"
           value={settings.soundEnabled}
           onChange={(v) => setSettings({ soundEnabled: v })}
           colors={colors}
@@ -157,12 +269,41 @@ export default function SettingsScreen() {
         />
         <Divider colors={colors} />
         <ToggleRow
-          label="Tick"
-          description="A subtle haptic tick every second while a session runs"
+          label="Haptic tick"
+          description="A subtle haptic pulse every second while a session runs (no sound)"
           value={settings.tickEnabled}
           onChange={(v) => setSettings({ tickEnabled: v })}
           colors={colors}
         />
+      </Section>
+
+      {/* Quiet hours */}
+      <Section title="Quiet hours" colors={colors}>
+        <ToggleRow
+          label="Enable quiet hours"
+          description="Mute end-of-session sound during the window below (vibration still off)"
+          value={settings.quietHoursEnabled}
+          onChange={(v) => setSettings({ quietHoursEnabled: v })}
+          colors={colors}
+        />
+        {settings.quietHoursEnabled ? (
+          <>
+            <Divider colors={colors} />
+            <ClockRow
+              label="From"
+              value={settings.quietHoursStart}
+              onChange={(v) => setSettings({ quietHoursStart: v })}
+              colors={colors}
+            />
+            <Divider colors={colors} />
+            <ClockRow
+              label="To"
+              value={settings.quietHoursEnd}
+              onChange={(v) => setSettings({ quietHoursEnd: v })}
+              colors={colors}
+            />
+          </>
+        ) : null}
       </Section>
 
       {/* Themes */}
@@ -170,6 +311,12 @@ export default function SettingsScreen() {
         <View style={styles.themeGrid}>
           {themeList.map((t) => {
             const palette = scheme === "dark" ? t.dark : t.light;
+            const accentOverride = resolveAccent(
+              settings.accentName,
+              scheme === "dark" ? "dark" : "light",
+            );
+            const effectivePrimary = accentOverride ?? palette.primary;
+            const effectiveWork = accentOverride ?? palette.workColor;
             const selected = settings.themeName === t.name;
             return (
               <Pressable
@@ -182,17 +329,19 @@ export default function SettingsScreen() {
                   styles.themeCard,
                   {
                     backgroundColor: palette.card,
-                    borderColor: selected ? palette.primary : colors.border,
+                    borderColor: selected ? effectivePrimary : colors.border,
                     borderWidth: selected ? 2 : StyleSheet.hairlineWidth,
                     opacity: pressed ? 0.85 : 1,
                   },
                 ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Theme ${t.label}`}
               >
                 <View style={styles.themeSwatchRow}>
                   <View
                     style={[
                       styles.themeSwatch,
-                      { backgroundColor: palette.workColor },
+                      { backgroundColor: effectiveWork },
                     ]}
                   />
                   <View
@@ -225,7 +374,7 @@ export default function SettingsScreen() {
                   <View
                     style={[
                       styles.themeCheck,
-                      { backgroundColor: palette.primary },
+                      { backgroundColor: effectivePrimary },
                     ]}
                   >
                     <Feather name="check" size={12} color="#ffffff" />
@@ -259,6 +408,8 @@ export default function SettingsScreen() {
                   styles.accentItem,
                   { opacity: pressed ? 0.7 : 1 },
                 ]}
+                accessibilityRole="button"
+                accessibilityLabel={`Accent ${a.label}`}
               >
                 <View
                   style={[
@@ -298,13 +449,38 @@ export default function SettingsScreen() {
         </View>
       </Section>
 
+      {/* Data */}
+      <Section title="Data" colors={colors}>
+        <Pressable
+          onPress={exportStats}
+          style={({ pressed }) => [
+            styles.row,
+            { opacity: pressed ? 0.7 : 1 },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Export stats"
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+              Export stats
+            </Text>
+            <Text
+              style={[styles.rowDescription, { color: colors.mutedForeground }]}
+            >
+              Save your session history as JSON
+            </Text>
+          </View>
+          <Feather name="share" size={18} color={colors.mutedForeground} />
+        </Pressable>
+      </Section>
+
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
         Heads up: the live-countdown pill shows as a persistent system
         notification on Android (visible from any app and the lock screen) and
         as a floating pill inside the app on the Stats and Settings screens.
-        A true overlay floating on top of other apps requires Android's
-        special "Display over other apps" permission, which is only available
-        in a custom build of the app — not in Expo Go.
+        A true overlay floating on top of other apps requires Android&apos;s
+        special &quot;Display over other apps&quot; permission, which is only
+        available in a custom build of the app — not in Expo Go.
       </Text>
     </ScrollView>
   );
@@ -387,6 +563,8 @@ function NumberRow({
         <Pressable
           onPress={dec}
           disabled={value <= min}
+          accessibilityRole="button"
+          accessibilityLabel={`Decrease ${label}`}
           style={({ pressed }) => [
             styles.stepBtn,
             {
@@ -408,12 +586,68 @@ function NumberRow({
         <Pressable
           onPress={inc}
           disabled={value >= max}
+          accessibilityRole="button"
+          accessibilityLabel={`Increase ${label}`}
           style={({ pressed }) => [
             styles.stepBtn,
             {
               backgroundColor: colors.muted,
               opacity: value >= max ? 0.4 : pressed ? 0.7 : 1,
             },
+          ]}
+        >
+          <Feather name="plus" size={16} color={colors.foreground} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function ClockRow({
+  label,
+  value,
+  onChange,
+  colors,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const STEP = 30;
+  const dec = () => onChange((value - STEP + 24 * 60) % (24 * 60));
+  const inc = () => onChange((value + STEP) % (24 * 60));
+  return (
+    <View style={styles.row}>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+          {label}
+        </Text>
+      </View>
+      <View style={styles.stepper}>
+        <Pressable
+          onPress={dec}
+          accessibilityRole="button"
+          accessibilityLabel={`Earlier ${label}`}
+          style={({ pressed }) => [
+            styles.stepBtn,
+            { backgroundColor: colors.muted, opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <Feather name="minus" size={16} color={colors.foreground} />
+        </Pressable>
+        <View style={[styles.stepValueWrap, { minWidth: 90 }]}>
+          <Text style={[styles.stepValue, { color: colors.foreground }]}>
+            {formatClock(value)}
+          </Text>
+        </View>
+        <Pressable
+          onPress={inc}
+          accessibilityRole="button"
+          accessibilityLabel={`Later ${label}`}
+          style={({ pressed }) => [
+            styles.stepBtn,
+            { backgroundColor: colors.muted, opacity: pressed ? 0.7 : 1 },
           ]}
         >
           <Feather name="plus" size={16} color={colors.foreground} />
@@ -459,6 +693,7 @@ function ToggleRow({
         trackColor={{ false: colors.muted, true: colors.primary }}
         thumbColor="#ffffff"
         ios_backgroundColor={colors.muted}
+        accessibilityLabel={label}
       />
     </View>
   );
@@ -469,10 +704,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 24,
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   title: {
     fontSize: 28,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.5,
+  },
+  headerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  headerBtnText: {
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
   },
   sectionTitle: {
     fontSize: 11,
@@ -503,6 +755,23 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 16,
   },
+  presetCol: {},
+  presetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  presetName: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+  },
+  presetMeta: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
   stepper: {
     flexDirection: "row",
     alignItems: "center",
@@ -526,6 +795,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontFamily: "Inter_700Bold",
     letterSpacing: -0.3,
+    fontVariant: ["tabular-nums"],
   },
   stepUnit: {
     fontSize: 12,
