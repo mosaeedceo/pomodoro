@@ -1,6 +1,10 @@
 import { useColorScheme } from "react-native";
 
-import colors, { type Palette, type ThemeName } from "@/constants/colors";
+import colors, {
+  resolveAccent,
+  type Palette,
+  type ThemeName,
+} from "@/constants/colors";
 import { useSettings } from "@/contexts/AppContext";
 
 export function useColors(): Palette & { radius: number } {
@@ -8,7 +12,20 @@ export function useColors(): Palette & { radius: number } {
   const { settings } = useSettings();
   const themeName: ThemeName = settings.themeName;
   const theme = colors.themes[themeName] ?? colors.themes.crimson;
-  const palette = scheme === "dark" ? theme.dark : theme.light;
+  const basePalette = scheme === "dark" ? theme.dark : theme.light;
+  const accentColor = resolveAccent(
+    settings.accentName,
+    scheme === "dark" ? "dark" : "light",
+  );
+  const palette: Palette = accentColor
+    ? {
+        ...basePalette,
+        primary: accentColor,
+        workColor: accentColor,
+        tint: accentColor,
+        destructive: accentColor,
+      }
+    : basePalette;
   return { ...palette, radius: colors.radius };
 }
 

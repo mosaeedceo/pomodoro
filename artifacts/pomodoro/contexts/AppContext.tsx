@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
 import React, {
   createContext,
@@ -11,7 +12,7 @@ import React, {
 } from "react";
 import { AppState, Platform, Vibration } from "react-native";
 
-import type { ThemeName } from "@/constants/colors";
+import type { AccentName, ThemeName } from "@/constants/colors";
 
 export type SessionType = "work" | "shortBreak" | "longBreak";
 
@@ -27,6 +28,7 @@ export interface Settings {
   tickEnabled: boolean;
   pillNotificationEnabled: boolean;
   themeName: ThemeName;
+  accentName: AccentName;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -41,6 +43,7 @@ const DEFAULT_SETTINGS: Settings = {
   tickEnabled: false,
   pillNotificationEnabled: true,
   themeName: "crimson",
+  accentName: "default",
 };
 
 export interface SessionRecord {
@@ -388,6 +391,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       completeSession();
     }
   }, [remainingMs, timer.isRunning, completeSession]);
+
+  // Tick haptic — plays once per second while running
+  const lastTickSecondRef = useRef<number>(-1);
+  useEffect(() => {
+    if (!timer.isRunning) {
+      lastTickSecondRef.current = -1;
+      return;
+    }
+    if (!settings.tickEnabled) return;
+    if (Platform.OS === "web") return;
+    const seconds = Math.ceil(remainingMs / 1000);
+    if (seconds === lastTickSecondRef.current) return;
+    if (seconds <= 0) return;
+    lastTickSecondRef.current = seconds;
+    Haptics.selectionAsync().catch(() => {});
+  }, [remainingMs, timer.isRunning, settings.tickEnabled]);
 
   // Pill notification updater
   useEffect(() => {

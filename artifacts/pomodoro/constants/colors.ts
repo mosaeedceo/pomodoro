@@ -1,5 +1,41 @@
 export type ThemeName = "crimson" | "ocean" | "forest" | "midnight" | "sunset";
 
+export type AccentName =
+  | "default"
+  | "ruby"
+  | "amber"
+  | "emerald"
+  | "sapphire"
+  | "violet"
+  | "rose";
+
+export interface Accent {
+  name: AccentName;
+  label: string;
+  light: string;
+  dark: string;
+}
+
+export const accentList: Accent[] = [
+  { name: "default", label: "Theme", light: "", dark: "" },
+  { name: "ruby", label: "Ruby", light: "#d6294a", dark: "#ff5577" },
+  { name: "amber", label: "Amber", light: "#d97706", dark: "#fbbf24" },
+  { name: "emerald", label: "Emerald", light: "#059669", dark: "#34d399" },
+  { name: "sapphire", label: "Sapphire", light: "#1d4ed8", dark: "#60a5fa" },
+  { name: "violet", label: "Violet", light: "#7c3aed", dark: "#a78bfa" },
+  { name: "rose", label: "Rose", light: "#e11d6f", dark: "#fb7299" },
+];
+
+export function resolveAccent(
+  accent: AccentName,
+  scheme: "light" | "dark",
+): string | null {
+  if (accent === "default") return null;
+  const a = accentList.find((x) => x.name === accent);
+  if (!a) return null;
+  return scheme === "dark" ? a.dark : a.light;
+}
+
 export interface Palette {
   background: string;
   foreground: string;

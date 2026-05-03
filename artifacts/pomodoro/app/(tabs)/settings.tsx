@@ -13,7 +13,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import colors_constants, { themeList, type ThemeName } from "@/constants/colors";
+import {
+  accentList,
+  themeList,
+  type AccentName,
+  type ThemeName,
+} from "@/constants/colors";
 import { useApp, type Settings } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 
@@ -150,6 +155,14 @@ export default function SettingsScreen() {
           onChange={(v) => setSettings({ vibrationEnabled: v })}
           colors={colors}
         />
+        <Divider colors={colors} />
+        <ToggleRow
+          label="Tick"
+          description="A subtle haptic tick every second while a session runs"
+          value={settings.tickEnabled}
+          onChange={(v) => setSettings({ tickEnabled: v })}
+          colors={colors}
+        />
       </Section>
 
       {/* Themes */}
@@ -224,10 +237,74 @@ export default function SettingsScreen() {
         </View>
       </Section>
 
+      {/* Accent */}
+      <Section title="Accent color" colors={colors}>
+        <View style={styles.accentGrid}>
+          {accentList.map((a) => {
+            const selected = settings.accentName === a.name;
+            const swatch =
+              a.name === "default"
+                ? colors.workColor
+                : scheme === "dark"
+                  ? a.dark
+                  : a.light;
+            return (
+              <Pressable
+                key={a.name}
+                onPress={() => {
+                  haptic();
+                  setSettings({ accentName: a.name as AccentName });
+                }}
+                style={({ pressed }) => [
+                  styles.accentItem,
+                  { opacity: pressed ? 0.7 : 1 },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.accentSwatch,
+                    {
+                      backgroundColor: swatch,
+                      borderColor: selected ? colors.foreground : "transparent",
+                      borderWidth: selected ? 3 : 0,
+                    },
+                  ]}
+                >
+                  {a.name === "default" ? (
+                    <Feather name="droplet" size={14} color="#ffffff" />
+                  ) : selected ? (
+                    <Feather name="check" size={16} color="#ffffff" />
+                  ) : null}
+                </View>
+                <Text
+                  style={[
+                    styles.accentLabel,
+                    {
+                      color: selected
+                        ? colors.foreground
+                        : colors.mutedForeground,
+                      fontFamily: selected
+                        ? "Inter_600SemiBold"
+                        : "Inter_500Medium",
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {a.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Section>
+
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-        On Android, the pop-up pill appears as a persistent system notification
-        with the live countdown so you can see it from any app or the lock
-        screen.
+        Heads up: the live-countdown pill shows as a persistent system
+        notification on Android (visible from any app and the lock screen) and
+        as a floating pill inside the app on the Stats and Settings screens.
+        A true overlay floating on top of other apps requires Android's
+        special "Display over other apps" permission, which is only available
+        in a custom build of the app — not in Expo Go.
       </Text>
     </ScrollView>
   );
@@ -488,6 +565,28 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+  },
+  accentGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 14,
+    padding: 16,
+    justifyContent: "space-between",
+  },
+  accentItem: {
+    alignItems: "center",
+    gap: 6,
+    width: 56,
+  },
+  accentSwatch: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  accentLabel: {
+    fontSize: 11,
   },
   footnote: {
     fontSize: 12,
