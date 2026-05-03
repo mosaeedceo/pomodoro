@@ -17,12 +17,7 @@ import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { formatTime } from "@/lib/format";
-
-const SESSION_LABELS = {
-  work: "Focus",
-  shortBreak: "Short Break",
-  longBreak: "Long Break",
-};
+import { createTranslator } from "@/lib/i18n";
 
 export function PillNotification() {
   const colors = useColors();
@@ -31,7 +26,14 @@ export function PillNotification() {
   const layout = useResponsiveLayout();
   const navigation = useNavigation();
   const segments = useSegments() as string[];
-  const { timer, remainingMs, pause, start } = useApp();
+  const { timer, remainingMs, pause, start, settings } = useApp();
+  const t = React.useMemo(
+    () => createTranslator(settings.language),
+    [settings.language],
+  );
+  const resolvedScheme =
+    settings.colorScheme === "system" ? colorScheme : settings.colorScheme;
+  const sessionLabel = t(`session.${timer.sessionType}`);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
 
@@ -116,29 +118,40 @@ export function PillNotification() {
         onPress={handleOpen}
         style={styles.pressable}
         accessibilityRole="button"
-        accessibilityLabel={`Open timer, ${SESSION_LABELS[timer.sessionType]} ${formatTime(remainingMs)} remaining`}
+        accessibilityLabel={`${sessionLabel} ${formatTime(remainingMs)}`}
       >
         <View
           style={[
             styles.pill,
             {
+              borderRadius:
+                settings.pillShape === "square"
+                  ? 10
+                  : settings.pillShape === "rounded"
+                    ? 18
+                    : 999,
+              paddingVertical: settings.pillShape === "compact" ? 8 : 10,
+              paddingHorizontal: settings.pillShape === "compact" ? 12 : 14,
+              maxWidth: settings.pillShape === "compact" ? 300 : undefined,
+            },
+            {
               backgroundColor: colors.card,
               borderColor: colors.border,
-              shadowColor: colorScheme === "dark" ? "#000" : "#000",
+              shadowColor: "#000",
             },
           ]}
         >
           {Platform.OS === "ios" ? (
             <BlurView
               intensity={60}
-              tint={colorScheme === "dark" ? "dark" : "light"}
+              tint={resolvedScheme === "dark" ? "dark" : "light"}
               style={StyleSheet.absoluteFill}
             />
           ) : null}
           <View style={[styles.dot, { backgroundColor: sessionColor }]} />
           <View style={styles.textCol}>
             <Text style={[styles.label, { color: colors.mutedForeground }]}>
-              {SESSION_LABELS[timer.sessionType]}
+              {sessionLabel}
             </Text>
             <Text style={[styles.time, { color: colors.foreground }]}>
               {formatTime(remainingMs)}
@@ -148,7 +161,7 @@ export function PillNotification() {
             onPress={handleToggle}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={timer.isRunning ? "Pause timer" : "Resume timer"}
+            accessibilityLabel={timer.isRunning ? t("timer.pause") : t("timer.resume")}
             style={({ pressed }) => [
               styles.iconBtn,
               {

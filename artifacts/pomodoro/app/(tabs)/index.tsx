@@ -20,12 +20,7 @@ import { useApp, type SessionType } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { formatTime, startOfDay } from "@/lib/format";
-
-const SESSION_LABELS: Record<SessionType, string> = {
-  work: "Focus",
-  shortBreak: "Short Break",
-  longBreak: "Long Break",
-};
+import { createTranslator } from "@/lib/i18n";
 
 export default function TimerScreen() {
   const colors = useColors();
@@ -44,6 +39,15 @@ export default function TimerScreen() {
     skip,
     setTaskLabel,
   } = useApp();
+  const t = React.useMemo(
+    () => createTranslator(settings.language),
+    [settings.language],
+  );
+  const sessionLabels: Record<SessionType, string> = {
+    work: t("session.work"),
+    shortBreak: t("session.shortBreak"),
+    longBreak: t("session.longBreak"),
+  };
 
   const sessionColor =
     timer.sessionType === "work"
@@ -163,7 +167,10 @@ export default function TimerScreen() {
           <Pressable
             onPress={() => goTo("stats")}
             accessibilityRole="button"
-            accessibilityLabel={`Today: ${todayCount} of ${settings.dailyGoal} pomodoros. Open stats.`}
+            accessibilityLabel={t("timer.todayA11y", {
+              count: todayCount,
+              goal: settings.dailyGoal,
+            })}
             style={({ pressed }) => [
               styles.todayChip,
               {
@@ -180,7 +187,7 @@ export default function TimerScreen() {
               <Text style={{ color: colors.mutedForeground }}>
                 /{settings.dailyGoal}
               </Text>{" "}
-              today
+              {t("timer.today")}
             </Text>
           </Pressable>
 
@@ -225,7 +232,9 @@ export default function TimerScreen() {
                 }}
                 delayLongPress={350}
                 accessibilityRole="button"
-                accessibilityLabel={`${SESSION_LABELS[timer.sessionType]} session. Long-press to open settings.`}
+                accessibilityLabel={t("timer.sessionA11y", {
+                  label: sessionLabels[timer.sessionType],
+                })}
                 style={[
                   styles.sessionPill,
                   { backgroundColor: sessionColor + "22", borderColor: sessionColor },
@@ -235,7 +244,7 @@ export default function TimerScreen() {
                   style={[styles.sessionPillDot, { backgroundColor: sessionColor }]}
                 />
                 <Text style={[styles.sessionLabel, { color: sessionColor }]}>
-                  {SESSION_LABELS[timer.sessionType]}
+                  {sessionLabels[timer.sessionType]}
                 </Text>
               </Pressable>
             </View>
@@ -247,8 +256,8 @@ export default function TimerScreen() {
               accessibilityRole="button"
               accessibilityLabel={
                 timer.isRunning
-                  ? `Pause. ${formatTime(remainingMs)} remaining.`
-                  : `Start. ${formatTime(remainingMs)} remaining.`
+                  ? t("timer.pauseA11y", { time: formatTime(remainingMs) })
+                  : t("timer.startA11y", { time: formatTime(remainingMs) })
               }
             >
               <Animated.View style={{ transform: [{ scale: pulse }] }}>
@@ -275,18 +284,18 @@ export default function TimerScreen() {
                   >
                     {timer.isRunning
                       ? endingSoon
-                        ? "ending soon"
-                        : "in progress"
+                        ? t("timer.endingSoon")
+                        : t("timer.inProgress")
                       : timer.pausedRemainingMs != null &&
                           timer.pausedRemainingMs < timer.totalMs
-                        ? "paused"
-                        : "ready"}
+                        ? t("timer.paused")
+                        : t("timer.ready")}
                   </Text>
                   <Text
                     style={[styles.nextLabel, { color: colors.mutedForeground }]}
                     numberOfLines={1}
                   >
-                    Next: {SESSION_LABELS[nextSession]} · {nextDuration}m
+                    {t("timer.next")}: {sessionLabels[nextSession]} · {nextDuration}m
                   </Text>
                 </CircularProgress>
               </Animated.View>
@@ -300,12 +309,12 @@ export default function TimerScreen() {
               <TextInput
                 value={timer.taskLabel}
                 onChangeText={setTaskLabel}
-                placeholder="What are you working on?"
+                placeholder={t("timer.taskPlaceholder")}
                 placeholderTextColor={colors.mutedForeground}
                 style={[styles.taskInput, { color: colors.foreground }]}
                 returnKeyType="done"
                 maxLength={60}
-                accessibilityLabel="Task name"
+                accessibilityLabel={t("timer.taskPlaceholder")}
               />
             </View>
 
@@ -319,7 +328,7 @@ export default function TimerScreen() {
               <Pressable
                 onPress={handleReset}
                 accessibilityRole="button"
-                accessibilityLabel="Reset timer"
+                accessibilityLabel={t("timer.resetA11y")}
                 style={({ pressed }) => [
                   styles.secondaryBtn,
                   {
@@ -334,7 +343,7 @@ export default function TimerScreen() {
               <Pressable
                 onPress={handlePrimary}
                 accessibilityRole="button"
-                accessibilityLabel={timer.isRunning ? "Pause timer" : "Start timer"}
+                accessibilityLabel={timer.isRunning ? t("timer.pause") : t("timer.start")}
                 style={({ pressed }) => [
                   styles.primaryBtn,
                   {
@@ -355,7 +364,7 @@ export default function TimerScreen() {
               <Pressable
                 onPress={handleSkip}
                 accessibilityRole="button"
-                accessibilityLabel="Skip to next session"
+                accessibilityLabel={t("timer.skipA11y")}
                 style={({ pressed }) => [
                   styles.secondaryBtn,
                   {

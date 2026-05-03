@@ -6,7 +6,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
 
-class PillDrawable : Drawable() {
+class PillDrawable(private val shape: String = "classic") : Drawable() {
   private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     color = Color.parseColor("#fffaf8")
     setShadowLayer(14f, 0f, 5f, Color.argb(55, 0, 0, 0))
@@ -14,7 +14,12 @@ class PillDrawable : Drawable() {
 
   override fun draw(canvas: Canvas) {
     val rect = RectF(bounds)
-    canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, paint)
+    val radius = when (shape) {
+      "square" -> 10f
+      "rounded" -> 22f
+      else -> rect.height() / 2f
+    }
+    canvas.drawRoundRect(rect, radius, radius, paint)
   }
 
   override fun setAlpha(alpha: Int) {

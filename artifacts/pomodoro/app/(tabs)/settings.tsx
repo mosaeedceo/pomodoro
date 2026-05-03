@@ -28,12 +28,22 @@ import {
   type AccentName,
   type ThemeName,
 } from "@/constants/colors";
-import { PRESETS, useApp, type SessionType } from "@/contexts/AppContext";
+import {
+  PRESETS,
+  useApp,
+  type FloatingPillShape,
+  type SessionType,
+} from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { formatTime } from "@/lib/format";
 import { playAlarmSound } from "@/lib/alarmPlayer";
 import { ALARM_SOUNDS, type AlarmSoundName } from "@/lib/alarmSounds";
+import {
+  createTranslator,
+  languageOptions,
+  type LanguageCode,
+} from "@/lib/i18n";
 import { FloatingPill } from "floating-pill";
 
 function formatClock(minutesFromMidnight: number): string {
@@ -59,6 +69,16 @@ export default function SettingsScreen() {
     timer,
     remainingMs,
   } = useApp();
+  const t = React.useMemo(
+    () => createTranslator(settings.language),
+    [settings.language],
+  );
+  const resolvedScheme =
+    settings.colorScheme === "system"
+      ? scheme === "dark"
+        ? "dark"
+        : "light"
+      : settings.colorScheme;
 
   const previewType: SessionType = timer.sessionType;
   const previewColor =
@@ -69,10 +89,10 @@ export default function SettingsScreen() {
         : colors.longBreakColor;
   const previewLabel =
     previewType === "work"
-      ? "Focus"
+      ? t("session.work")
       : previewType === "shortBreak"
-        ? "Short Break"
-        : "Long Break";
+        ? t("session.shortBreak")
+        : t("session.longBreak");
   const previewTime = timer.isRunning
     ? formatTime(remainingMs)
     : formatTime(
@@ -97,11 +117,11 @@ export default function SettingsScreen() {
       return;
     }
     Alert.alert(
-      "Reset to defaults?",
-      "Your durations, behavior, alerts, theme, and goal will return to defaults.",
+      t("settings.resetTitle"),
+      t("settings.resetMessage"),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Reset", style: "destructive", onPress: resetSettings },
+        { text: t("common.cancel"), style: "cancel" },
+        { text: t("common.reset"), style: "destructive", onPress: resetSettings },
       ],
     );
   };
@@ -122,12 +142,14 @@ export default function SettingsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.headerRow}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Settings</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>
+          {t("settings.title")}
+        </Text>
         <Pressable
           onPress={confirmReset}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel="Reset to defaults"
+          accessibilityLabel={t("settings.resetA11y")}
           style={({ pressed }) => [
             styles.headerBtn,
             {
@@ -138,7 +160,7 @@ export default function SettingsScreen() {
         >
           <Feather name="rotate-ccw" size={14} color={colors.foreground} />
           <Text style={[styles.headerBtnText, { color: colors.foreground }]}>
-            Reset
+            {t("common.reset")}
           </Text>
         </Pressable>
       </View>
@@ -154,7 +176,7 @@ export default function SettingsScreen() {
         ]}
       >
         <Text style={[styles.previewCaption, { color: colors.mutedForeground }]}>
-          Live preview
+          {t("settings.livePreview")}
         </Text>
         <View
           style={[
@@ -189,7 +211,7 @@ export default function SettingsScreen() {
       </View>
 
       {/* Quick presets */}
-      <Section title="Quick presets" colors={colors}>
+      <Section title={t("settings.quickPresets")} colors={colors}>
         <View style={styles.presetCol}>
           {PRESETS.map((p, i) => (
             <Pressable
@@ -208,7 +230,7 @@ export default function SettingsScreen() {
                 },
               ]}
               accessibilityRole="button"
-              accessibilityLabel={`Apply preset ${p.name}`}
+              accessibilityLabel={t("settings.applyPresetA11y", { name: p.name })}
             >
               <View style={{ flex: 1 }}>
                 <Text
@@ -222,7 +244,12 @@ export default function SettingsScreen() {
                     { color: colors.mutedForeground },
                   ]}
                 >
-                  {p.settings.workMinutes}m focus · {p.settings.shortBreakMinutes}m short · {p.settings.longBreakMinutes}m long
+                  {p.settings.workMinutes}
+                  {t("settings.minutesShortUnit")} {t("session.workShort")} ·{" "}
+                  {p.settings.shortBreakMinutes}
+                  {t("settings.minutesShortUnit")}{" "}
+                  {t("session.shortBreakShort")} · {p.settings.longBreakMinutes}
+                  {t("settings.minutesShortUnit")} {t("session.longBreakShort")}
                 </Text>
               </View>
               <Feather
@@ -236,11 +263,11 @@ export default function SettingsScreen() {
       </Section>
 
       {/* Durations */}
-      <Section title="Durations" colors={colors}>
+      <Section title={t("settings.durations")} colors={colors}>
         <NumberRow
-          label="Focus"
+          label={t("settings.focus")}
           value={settings.workMinutes}
-          unit="min"
+          unit={t("settings.minutesUnit")}
           min={1}
           max={120}
           step={1}
@@ -253,9 +280,9 @@ export default function SettingsScreen() {
         />
         <Divider colors={colors} />
         <NumberRow
-          label="Short break"
+          label={t("settings.shortBreak")}
           value={settings.shortBreakMinutes}
-          unit="min"
+          unit={t("settings.minutesUnit")}
           min={1}
           max={60}
           step={1}
@@ -268,9 +295,9 @@ export default function SettingsScreen() {
         />
         <Divider colors={colors} />
         <NumberRow
-          label="Long break"
+          label={t("settings.longBreak")}
           value={settings.longBreakMinutes}
-          unit="min"
+          unit={t("settings.minutesUnit")}
           min={1}
           max={60}
           step={1}
@@ -283,7 +310,7 @@ export default function SettingsScreen() {
         />
         <Divider colors={colors} />
         <NumberRow
-          label="Rounds before long break"
+          label={t("settings.roundsBeforeLong")}
           value={settings.roundsBeforeLongBreak}
           unit=""
           min={2}
@@ -299,9 +326,9 @@ export default function SettingsScreen() {
       </Section>
 
       {/* Goal */}
-      <Section title="Daily goal" colors={colors}>
+      <Section title={t("settings.dailyGoal")} colors={colors}>
         <NumberRow
-          label="Pomodoros per day"
+          label={t("settings.pomodorosPerDay")}
           value={settings.dailyGoal}
           unit=""
           min={0}
@@ -317,18 +344,18 @@ export default function SettingsScreen() {
       </Section>
 
       {/* Behavior */}
-      <Section title="Behavior" colors={colors}>
+      <Section title={t("settings.behavior")} colors={colors}>
         <ToggleRow
-          label="Auto-start breaks"
-          description="Automatically start a break when focus ends"
+          label={t("settings.autoStartBreaks")}
+          description={t("settings.autoStartBreaksDesc")}
           value={settings.autoStartBreaks}
           onChange={(v) => setSettings({ autoStartBreaks: v })}
           colors={colors}
         />
         <Divider colors={colors} />
         <ToggleRow
-          label="Auto-start focus"
-          description="Automatically start the next focus when a break ends"
+          label={t("settings.autoStartFocus")}
+          description={t("settings.autoStartFocusDesc")}
           value={settings.autoStartWork}
           onChange={(v) => setSettings({ autoStartWork: v })}
           colors={colors}
@@ -336,7 +363,7 @@ export default function SettingsScreen() {
       </Section>
 
       {/* Alerts */}
-      <Section title="Alerts" colors={colors}>
+      <Section title={t("settings.alerts")} colors={colors}>
         <LiveCountdownRow
           pillEnabled={settings.pillNotificationEnabled}
           overlayEnabled={settings.floatingOverlayEnabled}
@@ -358,12 +385,23 @@ export default function SettingsScreen() {
               });
             }
           }}
+          language={settings.language}
+          colors={colors}
+        />
+        <Divider colors={colors} />
+        <PillShapeRow
+          value={settings.pillShape}
+          onChange={(pillShape) => {
+            haptic();
+            setSettings({ pillShape });
+          }}
+          language={settings.language}
           colors={colors}
         />
         <Divider colors={colors} />
         <ToggleRow
-          label="Sound"
-          description="Play an alarm sound when a session ends"
+          label={t("settings.sound")}
+          description={t("settings.soundDesc")}
           value={settings.soundEnabled}
           onChange={(v) => setSettings({ soundEnabled: v })}
           colors={colors}
@@ -377,6 +415,7 @@ export default function SettingsScreen() {
             haptic();
             setSettings({ alarmSound: v });
           }}
+          language={settings.language}
           colors={colors}
         />
         <Divider colors={colors} />
@@ -387,20 +426,21 @@ export default function SettingsScreen() {
           onPreview={() =>
             playAlarmSound(settings.alarmSound, settings.alarmVolume)
           }
+          language={settings.language}
           colors={colors}
         />
         <Divider colors={colors} />
         <ToggleRow
-          label="Vibration"
-          description="Vibrate when a session ends"
+          label={t("settings.vibration")}
+          description={t("settings.vibrationDesc")}
           value={settings.vibrationEnabled}
           onChange={(v) => setSettings({ vibrationEnabled: v })}
           colors={colors}
         />
         <Divider colors={colors} />
         <ToggleRow
-          label="Haptic tick"
-          description="A subtle haptic pulse every second while a session runs (no sound)"
+          label={t("settings.hapticTick")}
+          description={t("settings.hapticTickDesc")}
           value={settings.tickEnabled}
           onChange={(v) => setSettings({ tickEnabled: v })}
           colors={colors}
@@ -408,10 +448,10 @@ export default function SettingsScreen() {
       </Section>
 
       {/* Quiet hours */}
-      <Section title="Quiet hours" colors={colors}>
+      <Section title={t("settings.quietHours")} colors={colors}>
         <ToggleRow
-          label="Enable quiet hours"
-          description="Mute end-of-session sound during the window below (vibration still off)"
+          label={t("settings.enableQuietHours")}
+          description={t("settings.quietHoursDesc")}
           value={settings.quietHoursEnabled}
           onChange={(v) => setSettings({ quietHoursEnabled: v })}
           colors={colors}
@@ -420,14 +460,14 @@ export default function SettingsScreen() {
           <>
             <Divider colors={colors} />
             <ClockRow
-              label="From"
+              label={t("settings.from")}
               value={settings.quietHoursStart}
               onChange={(v) => setSettings({ quietHoursStart: v })}
               colors={colors}
             />
             <Divider colors={colors} />
             <ClockRow
-              label="To"
+              label={t("settings.to")}
               value={settings.quietHoursEnd}
               onChange={(v) => setSettings({ quietHoursEnd: v })}
               colors={colors}
@@ -437,23 +477,50 @@ export default function SettingsScreen() {
       </Section>
 
       {/* Themes */}
-      <Section title="Theme" colors={colors}>
+      <Section title={t("settings.appearance")} colors={colors}>
+        <SegmentedChoice
+          value={settings.colorScheme}
+          options={[
+            { value: "system", label: t("settings.system") },
+            { value: "light", label: t("settings.light") },
+            { value: "dark", label: t("settings.dark") },
+          ]}
+          onChange={(value) =>
+            setSettings({ colorScheme: value as "system" | "light" | "dark" })
+          }
+          colors={colors}
+        />
+        <Divider colors={colors} />
+        <SegmentedChoice
+          value={settings.language}
+          options={languageOptions.map((option) => ({
+            value: option.value,
+            label: t(option.labelKey),
+          }))}
+          onChange={(value) => setSettings({ language: value as LanguageCode })}
+          colors={colors}
+          description={t("settings.languageDesc")}
+        />
+      </Section>
+
+      <Section title={t("settings.theme")} colors={colors}>
         <View style={styles.themeGrid}>
-          {themeList.map((t) => {
-            const palette = scheme === "dark" ? t.dark : t.light;
+          {themeList.map((themeOption) => {
+            const palette =
+              resolvedScheme === "dark" ? themeOption.dark : themeOption.light;
             const accentOverride = resolveAccent(
               settings.accentName,
-              scheme === "dark" ? "dark" : "light",
+              resolvedScheme,
             );
             const effectivePrimary = accentOverride ?? palette.primary;
             const effectiveWork = accentOverride ?? palette.workColor;
-            const selected = settings.themeName === t.name;
+            const selected = settings.themeName === themeOption.name;
             return (
               <Pressable
-                key={t.name}
+                key={themeOption.name}
                 onPress={() => {
                   haptic();
-                  setSettings({ themeName: t.name as ThemeName });
+                  setSettings({ themeName: themeOption.name as ThemeName });
                 }}
                 style={({ pressed }) => [
                   styles.themeCard,
@@ -465,7 +532,9 @@ export default function SettingsScreen() {
                   },
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={`Theme ${t.label}`}
+                accessibilityLabel={t("settings.themeA11y", {
+                  label: themeOption.label,
+                })}
               >
                 <View style={styles.themeSwatchRow}>
                   <View
@@ -498,7 +567,7 @@ export default function SettingsScreen() {
                     },
                   ]}
                 >
-                  {t.label}
+                  {themeOption.label}
                 </Text>
                 {selected ? (
                   <View
@@ -517,14 +586,14 @@ export default function SettingsScreen() {
       </Section>
 
       {/* Accent */}
-      <Section title="Accent color" colors={colors}>
+      <Section title={t("settings.accentColor")} colors={colors}>
         <View style={styles.accentGrid}>
           {accentList.map((a) => {
             const selected = settings.accentName === a.name;
             const swatch =
               a.name === "default"
                 ? colors.workColor
-                : scheme === "dark"
+                : resolvedScheme === "dark"
                   ? a.dark
                   : a.light;
             return (
@@ -539,7 +608,7 @@ export default function SettingsScreen() {
                   { opacity: pressed ? 0.7 : 1 },
                 ]}
                 accessibilityRole="button"
-                accessibilityLabel={`Accent ${a.label}`}
+                accessibilityLabel={t("settings.accentA11y", { label: a.label })}
               >
                 <View
                   style={[
@@ -580,7 +649,7 @@ export default function SettingsScreen() {
       </Section>
 
       {/* Data */}
-      <Section title="Data" colors={colors}>
+      <Section title={t("settings.data")} colors={colors}>
         <Pressable
           onPress={exportStats}
           style={({ pressed }) => [
@@ -588,16 +657,16 @@ export default function SettingsScreen() {
             { opacity: pressed ? 0.7 : 1 },
           ]}
           accessibilityRole="button"
-          accessibilityLabel="Export stats"
+          accessibilityLabel={t("settings.exportStats")}
         >
           <View style={{ flex: 1 }}>
             <Text style={[styles.rowLabel, { color: colors.foreground }]}>
-              Export stats
+              {t("settings.exportStats")}
             </Text>
             <Text
               style={[styles.rowDescription, { color: colors.mutedForeground }]}
             >
-              Save your session history as JSON
+              {t("settings.exportStatsDesc")}
             </Text>
           </View>
           <Feather name="share" size={18} color={colors.mutedForeground} />
@@ -605,10 +674,7 @@ export default function SettingsScreen() {
       </Section>
 
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-        Heads up: the floating overlay uses Android&apos;s &quot;Display over
-        other apps&quot; permission and the system overlay window. It is only
-        available in a custom build of the app (not in Expo Go) — when
-        running in Expo Go the toggle stays disabled.
+        {t("settings.footnote")}
       </Text>
     </ScrollView>
   );
@@ -678,6 +744,11 @@ function NumberRow({
   onChange: (v: number) => void;
   colors: ReturnType<typeof useColors>;
 }) {
+  const { settings } = useApp();
+  const t = React.useMemo(
+    () => createTranslator(settings.language),
+    [settings.language],
+  );
   const dec = () => onChange(Math.max(min, value - step));
   const inc = () => onChange(Math.min(max, value + step));
   return (
@@ -692,7 +763,7 @@ function NumberRow({
           onPress={dec}
           disabled={value <= min}
           accessibilityRole="button"
-          accessibilityLabel={`Decrease ${label}`}
+          accessibilityLabel={t("settings.decreaseA11y", { label })}
           style={({ pressed }) => [
             styles.stepBtn,
             {
@@ -715,7 +786,7 @@ function NumberRow({
           onPress={inc}
           disabled={value >= max}
           accessibilityRole="button"
-          accessibilityLabel={`Increase ${label}`}
+          accessibilityLabel={t("settings.increaseA11y", { label })}
           style={({ pressed }) => [
             styles.stepBtn,
             {
@@ -753,6 +824,11 @@ function ClockRow({
   onChange: (v: number) => void;
   colors: ReturnType<typeof useColors>;
 }) {
+  const { settings } = useApp();
+  const t = React.useMemo(
+    () => createTranslator(settings.language),
+    [settings.language],
+  );
   const [iosOpen, setIosOpen] = React.useState(false);
   const [iosDraft, setIosDraft] = React.useState<Date>(() =>
     minutesToDate(value),
@@ -780,7 +856,7 @@ function ClockRow({
       const mm = current.getMinutes().toString().padStart(2, "0");
       const input =
         typeof window !== "undefined"
-          ? window.prompt(`${label} (HH:MM, 24-hour)`, `${hh}:${mm}`)
+          ? window.prompt(t("settings.timePrompt", { label }), `${hh}:${mm}`)
           : null;
       if (input) {
         const match = input.trim().match(/^(\d{1,2}):(\d{2})$/);
@@ -798,7 +874,10 @@ function ClockRow({
       <Pressable
         onPress={open}
         accessibilityRole="button"
-        accessibilityLabel={`${label} time, ${formatClock(value)}. Tap to change.`}
+        accessibilityLabel={t("settings.timeA11y", {
+          label,
+          time: formatClock(value),
+        })}
         style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]}
       >
         <View style={{ flex: 1 }}>
@@ -841,7 +920,7 @@ function ClockRow({
                   onPress={() => setIosOpen(false)}
                   hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel="Cancel"
+                  accessibilityLabel={t("common.cancel")}
                 >
                   <Text
                     style={[
@@ -849,7 +928,7 @@ function ClockRow({
                       { color: colors.mutedForeground },
                     ]}
                   >
-                    Cancel
+                    {t("common.cancel")}
                   </Text>
                 </Pressable>
                 <Text
@@ -867,12 +946,12 @@ function ClockRow({
                   }}
                   hitSlop={8}
                   accessibilityRole="button"
-                  accessibilityLabel="Done"
+                  accessibilityLabel={t("common.done")}
                 >
                   <Text
                     style={[styles.iosPickerAction, { color: colors.primary }]}
                   >
-                    Done
+                    {t("common.done")}
                   </Text>
                 </Pressable>
               </View>
@@ -941,13 +1020,16 @@ function LiveCountdownRow({
   pillEnabled,
   overlayEnabled,
   onChange,
+  language,
   colors,
 }: {
   pillEnabled: boolean;
   overlayEnabled: boolean;
   onChange: (mode: LiveCountdownMode) => void;
+  language: LanguageCode;
   colors: ReturnType<typeof useColors>;
 }) {
+  const t = React.useMemo(() => createTranslator(language), [language]);
   const overlayAvailable = React.useMemo(
     () => Platform.OS === "android" && FloatingPill.isAvailable(),
     [],
@@ -987,9 +1069,9 @@ function LiveCountdownRow({
   const selectOverlay = async () => {
     if (!overlayAvailable) {
       Alert.alert(
-        "Custom build required",
-        "The floating overlay needs Android's \"Display over other apps\" permission, which is only available in a custom build of the app — not in Expo Go. The sticky notification will keep showing the live countdown.",
-        [{ text: "OK" }],
+        t("live.customBuildTitle"),
+        t("live.customBuildMessage"),
+        [{ text: t("common.ok") }],
       );
       onChange("sticky");
       return;
@@ -1001,16 +1083,16 @@ function LiveCountdownRow({
       return;
     }
     Alert.alert(
-      "Allow display over other apps",
-      "Pomodoro needs the \"Display over other apps\" permission so the live timer pill can float above other apps. Tap Open Settings, then enable the permission for Pomodoro and come back. If you cancel, the sticky notification keeps the live countdown visible.",
+      t("live.permissionTitle"),
+      t("live.permissionMessage"),
       [
         {
-          text: "Cancel",
+          text: t("common.cancel"),
           style: "cancel",
           onPress: () => onChange("sticky"),
         },
         {
-          text: "Open Settings",
+          text: t("live.openSettings"),
           onPress: async () => {
             pendingOverlayRef.current = true;
             // Until granted, fall back to the sticky notification.
@@ -1033,15 +1115,15 @@ function LiveCountdownRow({
 
   const description =
     current === "overlay"
-      ? "A draggable timer pill floats above other apps while a session runs. Tap it to open Pomodoro; tap the icon to play/pause."
+      ? t("live.descOverlay")
       : current === "sticky"
-        ? "A sticky notification shows the live countdown while a session is running."
-        : "No live countdown shown outside the app.";
+        ? t("live.descSticky")
+        : t("live.descOff");
 
   const segments: { value: LiveCountdownMode; label: string; show: boolean }[] = [
-    { value: "off", label: "Off", show: true },
-    { value: "sticky", label: "Sticky", show: true },
-    { value: "overlay", label: "Floating", show: Platform.OS === "android" },
+    { value: "off", label: t("live.modeOff"), show: true },
+    { value: "sticky", label: t("live.modeSticky"), show: true },
+    { value: "overlay", label: t("live.modeOverlay"), show: Platform.OS === "android" },
   ];
   const visible = segments.filter((s) => s.show);
 
@@ -1049,7 +1131,7 @@ function LiveCountdownRow({
     <View style={{ paddingVertical: 14, paddingHorizontal: 16, gap: 10 }}>
       <View>
         <Text style={[styles.rowLabel, { color: colors.foreground }]}>
-          Live countdown
+          {t("live.countdown")}
         </Text>
         <Text style={[styles.rowDescription, { color: colors.mutedForeground }]}>
           {description}
@@ -1061,8 +1143,7 @@ function LiveCountdownRow({
               { color: colors.mutedForeground, marginTop: 4 },
             ]}
           >
-            Floating overlay requires a custom dev build and is not available in
-            Expo Go.
+            {t("live.unavailable")}
           </Text>
         ) : null}
       </View>
@@ -1082,7 +1163,7 @@ function LiveCountdownRow({
               key={seg.value}
               onPress={() => !disabled && handleSelect(seg.value)}
               accessibilityRole="button"
-              accessibilityLabel={`Live countdown: ${seg.label}`}
+              accessibilityLabel={t("live.segmentA11y", { label: seg.label })}
               accessibilityState={{ selected, disabled }}
               style={({ pressed }) => [
                 liveStyles.segment,
@@ -1111,8 +1192,7 @@ function LiveCountdownRow({
       </View>
       {current === "overlay" && !hasPermission && overlayAvailable ? (
         <Text style={[styles.rowDescription, { color: colors.mutedForeground }]}>
-          Waiting for &quot;Display over other apps&quot; permission. Falling
-          back to the sticky notification meanwhile.
+          {t("live.waitingPermission")}
         </Text>
       ) : null}
     </View>
@@ -1138,19 +1218,167 @@ const liveStyles = StyleSheet.create({
   },
 });
 
+function SegmentedChoice({
+  value,
+  options,
+  onChange,
+  description,
+  colors,
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+  description?: string;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={{ paddingVertical: 14, paddingHorizontal: 16, gap: 8 }}>
+      {description ? (
+        <Text style={[styles.rowDescription, { color: colors.mutedForeground }]}>
+          {description}
+        </Text>
+      ) : null}
+      <View
+        style={[
+          liveStyles.segmentWrap,
+          { backgroundColor: colors.muted, borderColor: colors.border },
+        ]}
+      >
+        {options.map((option) => {
+          const selected = value === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => onChange(option.value)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              style={({ pressed }) => [
+                liveStyles.segment,
+                {
+                  backgroundColor: selected ? colors.primary : "transparent",
+                  opacity: pressed ? 0.75 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  liveStyles.segmentLabel,
+                  {
+                    color: selected ? "#ffffff" : colors.foreground,
+                    fontFamily: selected
+                      ? "Inter_600SemiBold"
+                      : "Inter_500Medium",
+                  },
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function PillShapeRow({
+  value,
+  onChange,
+  language,
+  colors,
+}: {
+  value: FloatingPillShape;
+  onChange: (value: FloatingPillShape) => void;
+  language: LanguageCode;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const t = React.useMemo(() => createTranslator(language), [language]);
+  const options: { value: FloatingPillShape; label: string }[] = [
+    { value: "classic", label: t("pill.shapeClassic") },
+    { value: "rounded", label: t("pill.shapeRounded") },
+    { value: "square", label: t("pill.shapeSquare") },
+    { value: "compact", label: t("pill.shapeCompact") },
+  ];
+  return (
+    <View style={{ paddingVertical: 14, paddingHorizontal: 16, gap: 10 }}>
+      <View>
+        <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+          {t("pill.shape")}
+        </Text>
+        <Text style={[styles.rowDescription, { color: colors.mutedForeground }]}>
+          {t("pill.shapeDesc")}
+        </Text>
+      </View>
+      <View style={styles.shapeGrid}>
+        {options.map((option) => {
+          const selected = value === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => onChange(option.value)}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              style={({ pressed }) => [
+                styles.shapeCard,
+                {
+                  borderColor: selected ? colors.primary : colors.border,
+                  backgroundColor: selected ? colors.primary + "18" : colors.muted,
+                  opacity: pressed ? 0.75 : 1,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.shapePreview,
+                  {
+                    width: option.value === "compact" ? 44 : 58,
+                    borderRadius:
+                      option.value === "square"
+                        ? 8
+                        : option.value === "rounded"
+                          ? 16
+                          : 999,
+                    backgroundColor: selected ? colors.primary : colors.foreground,
+                  },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.shapeLabel,
+                  {
+                    color: selected ? colors.foreground : colors.mutedForeground,
+                    fontFamily: selected
+                      ? "Inter_600SemiBold"
+                      : "Inter_500Medium",
+                  },
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function AlarmSoundRow({
   value,
   volume,
   enabled,
   onChange,
+  language,
   colors,
 }: {
   value: AlarmSoundName;
   volume: number;
   enabled: boolean;
   onChange: (v: AlarmSoundName) => void;
+  language: LanguageCode;
   colors: ReturnType<typeof useColors>;
 }) {
+  const t = React.useMemo(() => createTranslator(language), [language]);
   return (
     <View style={{ paddingVertical: 14, paddingHorizontal: 16, gap: 10 }}>
       <View style={{ gap: 2 }}>
@@ -1160,10 +1388,10 @@ function AlarmSoundRow({
             { color: enabled ? colors.foreground : colors.mutedForeground },
           ]}
         >
-          Alarm sound
+          {t("alarm.sound")}
         </Text>
         <Text style={[styles.rowDescription, { color: colors.mutedForeground }]}>
-          Tap a sound to select. Tap again to preview.
+          {t("alarm.soundDesc")}
         </Text>
       </View>
       <View style={alarmStyles.grid}>
@@ -1223,14 +1451,17 @@ function VolumeRow({
   enabled,
   onChange,
   onPreview,
+  language,
   colors,
 }: {
   value: number;
   enabled: boolean;
   onChange: (v: number) => void;
   onPreview: () => void;
+  language: LanguageCode;
   colors: ReturnType<typeof useColors>;
 }) {
+  const t = React.useMemo(() => createTranslator(language), [language]);
   const pct = Math.round(value * 100);
   return (
     <View style={{ paddingVertical: 14, paddingHorizontal: 16, gap: 8 }}>
@@ -1242,12 +1473,12 @@ function VolumeRow({
               { color: enabled ? colors.foreground : colors.mutedForeground },
             ]}
           >
-            Volume
+            {t("alarm.volume")}
           </Text>
           <Text
             style={[styles.rowDescription, { color: colors.mutedForeground }]}
           >
-            {enabled ? `${pct}%` : "Sound is off"}
+            {enabled ? `${pct}%` : t("alarm.soundOff")}
           </Text>
         </View>
         <Pressable
@@ -1262,7 +1493,7 @@ function VolumeRow({
           ]}
         >
           <Feather name="play" size={12} color="#ffffff" />
-          <Text style={alarmStyles.previewBtnLabel}>Preview</Text>
+          <Text style={alarmStyles.previewBtnLabel}>{t("alarm.preview")}</Text>
         </Pressable>
       </View>
       <Slider
@@ -1390,6 +1621,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  shapeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  shapeCard: {
+    flexGrow: 1,
+    minWidth: "47%",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+  },
+  shapePreview: {
+    height: 22,
+  },
+  shapeLabel: {
+    fontSize: 12,
   },
   previewDot: {
     width: 10,

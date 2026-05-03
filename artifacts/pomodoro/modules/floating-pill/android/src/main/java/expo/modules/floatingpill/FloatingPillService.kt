@@ -9,7 +9,9 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
@@ -28,11 +30,25 @@ class FloatingPillService : Service() {
   private var taskView: TextView? = null
   private var toggleView: TextView? = null
   private var dotView: View? = null
+  private val handler = Handler(Looper.getMainLooper())
+  private var currentState: FloatingPillState? = null
   private var downRawX = 0f
   private var downRawY = 0f
   private var downX = 0
   private var downY = 0
   private var moved = false
+  private val tickRunnable = object : Runnable {
+    override fun run() {
+      val state = currentState ?: return
+      if (state.running && state.endAt > 0L) {
+        val updated = state.copy(time = formatRemaining(state.endAt - System.currentTimeMillis()))
+        currentState = updated
+        updatePill(updated)
+        startForeground(NOTIFICATION_ID, buildNotification(updated))
+        handler.postDelayed(this, 1000L)
+      }
+    }
+  }
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -58,14 +74,20 @@ class FloatingPillService : Service() {
       task = intent?.getStringExtra(FloatingPillEvents.EXTRA_TASK).orEmpty(),
       running = intent?.getBooleanExtra(FloatingPillEvents.EXTRA_RUNNING, false) ?: false,
       color = parseColor(intent?.getStringExtra(FloatingPillEvents.EXTRA_COLOR)),
+      endAt = intent?.getLongExtra(FloatingPillEvents.EXTRA_END_AT, 0L) ?: 0L,
+      totalMs = intent?.getLongExtra(FloatingPillEvents.EXTRA_TOTAL_MS, 0L) ?: 0L,
+      shape = intent?.getStringExtra(FloatingPillEvents.EXTRA_SHAPE).orEmpty().ifBlank { "classic" },
     )
 
+    currentState = state
     startForeground(NOTIFICATION_ID, buildNotification(state))
     if (pillView == null) addPill(state) else updatePill(state)
+    scheduleTick(state)
     return START_STICKY
   }
 
   override fun onDestroy() {
+    handler.removeCallbacks(tickRunnable)
     hideView()
     super.onDestroy()
   }
@@ -99,8 +121,13 @@ class FloatingPillService : Service() {
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER_VERTICAL
-      setPadding(18.dp, 10.dp, 10.dp, 10.dp)
-      background = PillDrawable()
+      setPadding(
+        if (state.shape == "compact") 14.dp else 18.dp,
+        if (state.shape == "compact") 8.dp else 10.dp,
+        if (state.shape == "compact") 8.dp else 10.dp,
+        if (state.shape == "compact") 8.dp else 10.dp,
+      )
+      background = PillDrawable(state.shape)
       elevation = 10.dp.toFloat()
     }
 
@@ -136,7 +163,13 @@ class FloatingPillService : Service() {
     textCol.addView(labelView)
     textCol.addView(timeView)
     textCol.addView(taskView)
-    root.addView(textCol, LinearLayout.LayoutParams(150.dp, LinearLayout.LayoutParams.WRAP_CONTENT))
+    root.addView(
+      textCol,
+      LinearLayout.LayoutParams(
+        if (state.shape == "compact") 112.dp else 150.dp,
+        LinearLayout.LayoutParams.WRAP_CONTENT,
+      ),
+    )
 
     toggleView = TextView(this).apply {
       textSize = 18f
@@ -163,6 +196,8 @@ class FloatingPillService : Service() {
   }
 
   private fun updatePill(state: FloatingPillState) {
+    val root = pillView as? LinearLayout
+    root?.background = PillDrawable(state.shape)
     labelView?.text = state.label
     timeView?.text = state.time
     taskView?.text = state.task
@@ -198,6 +233,8 @@ class FloatingPillService : Service() {
   }
 
   private fun hide() {
+    handler.removeCallbacks(tickRunnable)
+    currentState = null
     hideView()
     stopForeground(STOP_FOREGROUND_REMOVE)
     stopSelf()
@@ -247,6 +284,20 @@ class FloatingPillService : Service() {
     return runCatching { Color.parseColor(value ?: "#c8442a") }.getOrDefault(Color.parseColor("#c8442a"))
   }
 
+  private fun scheduleTick(state: FloatingPillState) {
+    handler.removeCallbacks(tickRunnable)
+    if (state.running && state.endAt > 0L) {
+      handler.postDelayed(tickRunnable, 1000L)
+    }
+  }
+
+  private fun formatRemaining(remainingMs: Long): String {
+    val totalSeconds = kotlin.math.max(0L, (remainingMs + 999L) / 1000L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+  }
+
   private val Int.dp: Int
     get() = (this * resources.displayMetrics.density).toInt()
 
@@ -256,6 +307,9 @@ class FloatingPillService : Service() {
     val task: String,
     val running: Boolean,
     val color: Int,
+    val endAt: Long,
+    val totalMs: Long,
+    val shape: String,
   )
 
   companion object {

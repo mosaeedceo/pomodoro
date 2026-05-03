@@ -10,7 +10,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
-import { useColorScheme, View } from "react-native";
+import { I18nManager, useColorScheme, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -19,6 +19,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OnboardingSheet } from "@/components/OnboardingSheet";
 import { PillNotification } from "@/components/PillNotification";
 import { AppProvider } from "@/contexts/AppContext";
+import { useSettings } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 
 SplashScreen.preventAutoHideAsync();
@@ -28,9 +29,13 @@ const queryClient = new QueryClient();
 function RootLayoutNav() {
   const colors = useColors();
   const scheme = useColorScheme();
+  const { settings } = useSettings();
+  const resolvedScheme =
+    settings.colorScheme === "system" ? scheme : settings.colorScheme;
+  const direction = I18nManager.isRTL ? "rtl" : "ltr";
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+    <View style={{ flex: 1, backgroundColor: colors.background, direction }}>
+      <StatusBar style={resolvedScheme === "dark" ? "light" : "dark"} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
       </Stack>
@@ -58,17 +63,17 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <KeyboardProvider>
-              <AppProvider>
+      <QueryClientProvider client={queryClient}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <KeyboardProvider>
+            <AppProvider>
+              <ErrorBoundary>
                 <RootLayoutNav />
-              </AppProvider>
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
-      </ErrorBoundary>
+              </ErrorBoundary>
+            </AppProvider>
+          </KeyboardProvider>
+        </GestureHandlerRootView>
+      </QueryClientProvider>
     </SafeAreaProvider>
   );
 }

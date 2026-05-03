@@ -17,6 +17,7 @@ import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { dayLabel, formatMinutes, startOfDay } from "@/lib/format";
+import { createTranslator } from "@/lib/i18n";
 
 type Period = "today" | "week" | "month" | "all";
 
@@ -33,6 +34,10 @@ export default function StatsScreen() {
     exportStats,
     setTaskLabel,
   } = useApp();
+  const t = React.useMemo(
+    () => createTranslator(settings.language),
+    [settings.language],
+  );
   const [period, setPeriod] = useState<Period>("week");
 
   const data = useMemo(() => {
@@ -155,12 +160,12 @@ export default function StatsScreen() {
       return;
     }
     Alert.alert(
-      "Clear all stats?",
-      "This permanently deletes every recorded session.",
+      t("stats.clearTitle"),
+      t("stats.clearMessage"),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Clear all", style: "destructive", onPress: clearStats },
-        { text: "Clear today only", onPress: clearTodayStats },
+        { text: t("common.cancel"), style: "cancel" },
+        { text: t("stats.clearAll"), style: "destructive", onPress: clearStats },
+        { text: t("stats.clearToday"), onPress: clearTodayStats },
       ],
     );
   };
@@ -181,14 +186,16 @@ export default function StatsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.headerRow}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Stats</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>
+          {t("stats.title")}
+        </Text>
         <View style={styles.headerActions}>
           {stats.length > 0 ? (
             <Pressable
               onPress={exportStats}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Export stats"
+              accessibilityLabel={t("stats.exportA11y")}
               style={({ pressed }) => ({ opacity: pressed ? 0.5 : 0.8 })}
             >
               <Feather
@@ -203,7 +210,7 @@ export default function StatsScreen() {
               onPress={handleClear}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Clear stats"
+              accessibilityLabel={t("stats.clearA11y")}
               style={({ pressed }) => ({ opacity: pressed ? 0.5 : 0.8 })}
             >
               <Feather
@@ -225,7 +232,7 @@ export default function StatsScreen() {
       >
         <View style={{ flex: 1 }}>
           <Text style={[styles.todayLabel, { color: colors.primaryForeground }]}>
-            Today
+            {t("stats.today")}
           </Text>
           <View style={styles.todayMain}>
             <Text
@@ -236,7 +243,7 @@ export default function StatsScreen() {
             <Text
               style={[styles.todayUnit, { color: colors.primaryForeground }]}
             >
-              of {settings.dailyGoal} goal
+              {t("stats.goal", { goal: settings.dailyGoal })}
             </Text>
           </View>
           <View style={styles.todayMetaRow}>
@@ -253,7 +260,13 @@ export default function StatsScreen() {
                   { color: colors.primaryForeground },
                 ]}
               >
-                {formatMinutes(data.todayMinutes)} focused
+                {t("stats.focused", {
+                  minutes: formatMinutes(
+                    data.todayMinutes,
+                    t("settings.minutesShortUnit"),
+                    t("settings.hoursShortUnit"),
+                  ),
+                })}
               </Text>
             </View>
             <View style={styles.todayMeta}>
@@ -269,7 +282,7 @@ export default function StatsScreen() {
                   { color: colors.primaryForeground },
                 ]}
               >
-                {data.streak} day streak
+                {t("stats.dayStreak", { count: data.streak })}
               </Text>
             </View>
           </View>
@@ -326,12 +339,12 @@ export default function StatsScreen() {
                 ]}
               >
                 {p === "today"
-                  ? "Today"
+                  ? t("stats.periodToday")
                   : p === "week"
-                    ? "Week"
+                    ? t("stats.periodWeek")
                     : p === "month"
-                      ? "Month"
-                      : "All"}
+                      ? t("stats.periodMonth")
+                      : t("stats.periodAll")}
               </Text>
             </Pressable>
           );
@@ -346,7 +359,7 @@ export default function StatsScreen() {
         ]}
       >
         <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-          This week
+          {t("stats.thisWeek")}
         </Text>
         <View style={styles.chart}>
           {data.week.map((d, i) => {
@@ -404,7 +417,7 @@ export default function StatsScreen() {
           ]}
         >
           <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-            Total sessions
+            {t("stats.totalSessions")}
           </Text>
           <Text style={[styles.statValue, { color: colors.foreground }]}>
             {data.allTimeCount}
@@ -417,10 +430,14 @@ export default function StatsScreen() {
           ]}
         >
           <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-            Total focus
+            {t("stats.totalFocus")}
           </Text>
           <Text style={[styles.statValue, { color: colors.foreground }]}>
-            {formatMinutes(data.allTimeMinutes)}
+            {formatMinutes(
+              data.allTimeMinutes,
+              t("settings.minutesShortUnit"),
+              t("settings.hoursShortUnit"),
+            )}
           </Text>
         </View>
       </View>
@@ -433,7 +450,7 @@ export default function StatsScreen() {
         ]}
       >
         <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-          Recent ({period})
+          {t("stats.recent", { period })}
         </Text>
         {recent.length === 0 ? (
           <View style={styles.empty}>
@@ -445,8 +462,8 @@ export default function StatsScreen() {
             />
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
               {period === "today"
-                ? "No sessions today yet — start a focus"
-                : "No sessions in this period"}
+                ? t("stats.noSessionsToday")
+                : t("stats.noSessionsPeriod")}
             </Text>
             <Pressable
               onPress={() => goTo("index")}
@@ -455,10 +472,10 @@ export default function StatsScreen() {
                 { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Open timer"
+              accessibilityLabel={t("stats.openTimer")}
             >
               <Text style={[styles.emptyCtaText, { color: colors.primaryForeground }]}>
-                Open timer
+                {t("stats.openTimer")}
               </Text>
             </Pressable>
           </View>
@@ -478,10 +495,10 @@ export default function StatsScreen() {
             const title =
               s.taskLabel ||
               (s.type === "work"
-                ? "Focus"
+                ? t("session.work")
                 : s.type === "shortBreak"
-                  ? "Short Break"
-                  : "Long Break");
+                  ? t("session.shortBreak")
+                  : t("session.longBreak"));
             return (
               <View
                 key={s.id}
@@ -509,14 +526,15 @@ export default function StatsScreen() {
                       { color: colors.mutedForeground },
                     ]}
                   >
-                    {time} • {Math.round(s.durationMs / 60000)}m
+                    {time} • {Math.round(s.durationMs / 60000)}
+                    {t("settings.minutesShortUnit")}
                   </Text>
                 </View>
                 {s.type === "work" && s.taskLabel ? (
                   <Pressable
                     onPress={() => handleResume(s.taskLabel)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Resume task ${s.taskLabel}`}
+                    accessibilityLabel={`${t("stats.resumeTask")} ${s.taskLabel}`}
                     hitSlop={8}
                     style={({ pressed }) => [
                       styles.resumeBtn,
@@ -534,7 +552,7 @@ export default function StatsScreen() {
                     <Text
                       style={[styles.resumeText, { color: colors.foreground }]}
                     >
-                      Resume
+                      {t("timer.resume")}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -546,7 +564,7 @@ export default function StatsScreen() {
           <Pressable
             onPress={() => setVisibleCount((n) => n + PAGE_SIZE)}
             accessibilityRole="button"
-            accessibilityLabel="Show more sessions"
+            accessibilityLabel={t("stats.showMore", { count: filtered.length - visibleCount })}
             style={({ pressed }) => [
               styles.showMore,
               {
@@ -556,7 +574,7 @@ export default function StatsScreen() {
             ]}
           >
             <Text style={[styles.showMoreText, { color: colors.primary }]}>
-              Show more ({filtered.length - visibleCount} more)
+              {t("stats.showMore", { count: filtered.length - visibleCount })}
             </Text>
           </Pressable>
         ) : null}
@@ -577,7 +595,7 @@ export default function StatsScreen() {
         >
           <Feather name="target" size={16} color={colors.primary} />
           <Text style={[styles.goalCtaText, { color: colors.foreground }]}>
-            Set a daily goal
+            {t("stats.setDailyGoal")}
           </Text>
           <Feather
             name="chevron-right"

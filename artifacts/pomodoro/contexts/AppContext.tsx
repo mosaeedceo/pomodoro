@@ -10,11 +10,22 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, Platform, Share, Vibration } from "react-native";
+import {
+  AppState,
+  I18nManager,
+  Platform,
+  Share,
+  Vibration,
+} from "react-native";
 
 import type { AccentName, ThemeName } from "@/constants/colors";
 import { playAlarmSound } from "@/lib/alarmPlayer";
 import { DEFAULT_ALARM_SOUND, type AlarmSoundName } from "@/lib/alarmSounds";
+import {
+  createTranslator,
+  isRtlLanguage,
+  type LanguageCode,
+} from "@/lib/i18n";
 import { FloatingPill } from "floating-pill";
 
 export type SessionType = "work" | "shortBreak" | "longBreak";
@@ -34,7 +45,10 @@ export interface Settings {
   alarmSound: AlarmSoundName;
   alarmVolume: number;
   themeName: ThemeName;
+  colorScheme: "system" | "light" | "dark";
   accentName: AccentName;
+  language: LanguageCode;
+  pillShape: FloatingPillShape;
   dailyGoal: number;
   quietHoursEnabled: boolean;
   quietHoursStart: number;
@@ -57,7 +71,10 @@ export const DEFAULT_SETTINGS: Settings = {
   alarmSound: DEFAULT_ALARM_SOUND,
   alarmVolume: 0.8,
   themeName: "crimson",
+  colorScheme: "system",
   accentName: "default",
+  language: "en",
+  pillShape: "classic",
   dailyGoal: 6,
   quietHoursEnabled: false,
   quietHoursStart: 22 * 60,
@@ -109,6 +126,8 @@ const NOTIFICATION_END_CHANNEL_ID = "pomodoro-alerts";
 const NOTIFICATION_END_QUIET_CHANNEL_ID = "pomodoro-alerts-quiet";
 const PILL_NOTIFICATION_ID = "pomodoro-pill-active";
 const SCHEDULED_END_ID = "pomodoro-end-scheduled";
+
+export type FloatingPillShape = "classic" | "rounded" | "square" | "compact";
 
 interface AppContextValue {
   settings: Settings;
@@ -188,7 +207,7 @@ async function configureNotifications() {
       await Notifications.setNotificationChannelAsync(
         NOTIFICATION_CHANNEL_ID,
         {
-          name: "Pomodoro Timer Pill",
+          name: "Pomodoro",
           importance: Notifications.AndroidImportance.LOW,
           vibrationPattern: [0],
           enableVibrate: false,
@@ -200,7 +219,7 @@ async function configureNotifications() {
       await Notifications.setNotificationChannelAsync(
         NOTIFICATION_END_CHANNEL_ID,
         {
-          name: "Session Alerts",
+          name: "Pomodoro Alerts",
           importance: Notifications.AndroidImportance.HIGH,
           vibrationPattern: [0, 250, 250, 250],
           enableVibrate: true,
@@ -209,7 +228,7 @@ async function configureNotifications() {
       await Notifications.setNotificationChannelAsync(
         NOTIFICATION_END_QUIET_CHANNEL_ID,
         {
-          name: "Session Alerts (quiet hours)",
+          name: "Pomodoro Alerts (quiet)",
           importance: Notifications.AndroidImportance.LOW,
           vibrationPattern: [0],
           enableVibrate: false,
@@ -222,14 +241,18 @@ async function configureNotifications() {
   }
 }
 
-const sessionLabel = (type: SessionType): string => {
+export const sessionLabel = (
+  type: SessionType,
+  language: LanguageCode = "en",
+): string => {
+  const t = createTranslator(language);
   switch (type) {
     case "work":
-      return "Focus";
+      return t("session.work");
     case "shortBreak":
-      return "Short Break";
+      return t("session.shortBreak");
     case "longBreak":
-      return "Long Break";
+      return t("session.longBreak");
   }
 };
 
@@ -237,6 +260,7 @@ async function showPillNotification(
   type: SessionType,
   remainingMs: number,
   taskLabel: string,
+  language: LanguageCode,
 ) {
   if (Platform.OS === "web") return;
   try {
@@ -246,8 +270,10 @@ async function showPillNotification(
     const time = `${minutes.toString().padStart(2, "0")}:${seconds
       .toString()
       .padStart(2, "0")}`;
-    const title = `${sessionLabel(type)} • ${time}`;
-    const body = taskLabel ? taskLabel : "Pomodoro running";
+    const label = sessionLabel(type, language);
+    const t = createTranslator(language);
+    const title = `${label} • ${time}`;
+    const body = taskLabel ? taskLabel : t("notification.remaining", { time });
     await Notifications.scheduleNotificationAsync({
       identifier: PILL_NOTIFICATION_ID,
       content: {
@@ -302,12 +328,15 @@ async function scheduleEndNotification(
   const inQuiet = isInQuietHours(settings, willEndDate);
   const shouldSound = settings.soundEnabled && !inQuiet;
   const next = nextSessionType(currentType, completedRounds, settings);
+  const t = createTranslator(settings.language);
   try {
     await Notifications.scheduleNotificationAsync({
       identifier: SCHEDULED_END_ID,
       content: {
-        title: "Time's up",
-        body: `Next: ${sessionLabel(next)}`,
+        title: t("notification.timeUp"),
+        body: t("notification.next", {
+          label: sessionLabel(next, settings.language),
+        }),
         sound: shouldSound,
         // During quiet hours, route to a silent/no-vibrate channel so the OS
         // delivers the alert without sound or vibration even when the JS
@@ -383,6 +412,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Persist
   useEffect(() => {
     if (!loaded) return;
+    const rtl = isRtlLanguage(settings.language);
+    if (I18nManager.isRTL !== rtl) {
+      I18nManager.allowRTL(rtl);
+      I18nManager.forceRTL(rtl);
+    }
     AsyncStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings)).catch(
       () => {},
     );
@@ -592,7 +626,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const time = `${minutes.toString().padStart(2, "0")}:${seconds
       .toString()
       .padStart(2, "0")}`;
-    const label = sessionLabel(timer.sessionType);
+    const label = sessionLabel(timer.sessionType, settings.language);
+    const endAt =
+      timer.isRunning && timer.startedAt != null
+        ? timer.startedAt + timer.totalMs
+        : Date.now() + remainingMs;
 
     if (!enabled) {
       if (lastOverlayShownRef.current) {
@@ -608,6 +646,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       task: timer.taskLabel,
       running: timer.isRunning,
       color: sessionColor,
+      endAt,
+      totalMs: timer.totalMs,
+      shape: settings.pillShape,
     };
     if (!lastOverlayShownRef.current) {
       FloatingPill.show(state);
@@ -623,6 +664,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     timer.totalMs,
     timer.sessionType,
     timer.taskLabel,
+    settings.language,
+    settings.pillShape,
     remainingMs,
   ]);
 
@@ -695,7 +738,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     if (lastPillMinuteRef.current === remainingMinute) return;
     lastPillMinuteRef.current = remainingMinute;
-    showPillNotification(timer.sessionType, remainingMs, timer.taskLabel);
+    showPillNotification(
+      timer.sessionType,
+      remainingMs,
+      timer.taskLabel,
+      settings.language,
+    );
   }, [
     timer.isRunning,
     timer.sessionType,
@@ -703,6 +751,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     remainingMinute,
     remainingMs,
     settings.pillNotificationEnabled,
+    settings.language,
     loaded,
   ]);
 
@@ -883,7 +932,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       await Share.share({
         message: json,
-        title: "Pomodoro stats export",
+        title: createTranslator(settingsRef.current.language)("settings.exportStats"),
       });
     } catch {
       // ignore

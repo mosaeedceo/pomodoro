@@ -80,6 +80,13 @@ class FloatingPillModule : Module() {
       putExtra(FloatingPillEvents.EXTRA_TASK, state[FloatingPillEvents.EXTRA_TASK] as? String ?: "")
       putExtra(FloatingPillEvents.EXTRA_RUNNING, state[FloatingPillEvents.EXTRA_RUNNING] as? Boolean ?: false)
       putExtra(FloatingPillEvents.EXTRA_COLOR, state[FloatingPillEvents.EXTRA_COLOR] as? String ?: "#c8442a")
+      putExtra(FloatingPillEvents.EXTRA_SHAPE, state[FloatingPillEvents.EXTRA_SHAPE] as? String ?: "classic")
+      (state[FloatingPillEvents.EXTRA_END_AT] as? Number)?.let {
+        putExtra(FloatingPillEvents.EXTRA_END_AT, it.toLong())
+      }
+      (state[FloatingPillEvents.EXTRA_TOTAL_MS] as? Number)?.let {
+        putExtra(FloatingPillEvents.EXTRA_TOTAL_MS, it.toLong())
+      }
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       context.startForegroundService(intent)

@@ -7,12 +7,12 @@ export function formatTime(ms: number): string {
     .padStart(2, "0")}`;
 }
 
-export function formatMinutes(totalMinutes: number): string {
-  if (totalMinutes < 60) return `${totalMinutes}m`;
+export function formatMinutes(totalMinutes: number, minuteUnit = "m", hourUnit = "h"): string {
+  if (totalMinutes < 60) return `${totalMinutes}${minuteUnit}`;
   const hours = Math.floor(totalMinutes / 60);
   const mins = totalMinutes % 60;
-  if (mins === 0) return `${hours}h`;
-  return `${hours}h ${mins}m`;
+  if (mins === 0) return `${hours}${hourUnit}`;
+  return `${hours}${hourUnit} ${mins}${minuteUnit}`;
 }
 
 export function startOfDay(timestamp: number): number {

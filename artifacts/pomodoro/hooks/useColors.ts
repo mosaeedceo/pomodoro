@@ -12,10 +12,16 @@ export function useColors(): Palette & { radius: number } {
   const { settings } = useSettings();
   const themeName: ThemeName = settings.themeName;
   const theme = colors.themes[themeName] ?? colors.themes.crimson;
-  const basePalette = scheme === "dark" ? theme.dark : theme.light;
+  const resolvedScheme =
+    settings.colorScheme === "system"
+      ? scheme === "dark"
+        ? "dark"
+        : "light"
+      : settings.colorScheme;
+  const basePalette = resolvedScheme === "dark" ? theme.dark : theme.light;
   const accentColor = resolveAccent(
     settings.accentName,
-    scheme === "dark" ? "dark" : "light",
+    resolvedScheme,
   );
   const palette: Palette = accentColor
     ? {
