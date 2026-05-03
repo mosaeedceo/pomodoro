@@ -1,10 +1,15 @@
 import { Feather } from "@expo/vector-icons";
+import DateTimePicker, {
+  DateTimePickerAndroid,
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import Slider from "@react-native-community/slider";
 import * as Haptics from "expo-haptics";
 import React from "react";
 import {
   Alert,
   AppState,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -721,6 +726,17 @@ function NumberRow({
   );
 }
 
+function minutesToDate(minutes: number): Date {
+  const m = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const d = new Date();
+  d.setHours(Math.floor(m / 60), m % 60, 0, 0);
+  return d;
+}
+
+function dateToMinutes(d: Date): number {
+  return d.getHours() * 60 + d.getMinutes();
+}
+
 function ClockRow({
   label,
   value,
@@ -732,46 +748,143 @@ function ClockRow({
   onChange: (v: number) => void;
   colors: ReturnType<typeof useColors>;
 }) {
-  const STEP = 30;
-  const dec = () => onChange((value - STEP + 24 * 60) % (24 * 60));
-  const inc = () => onChange((value + STEP) % (24 * 60));
+  const [iosOpen, setIosOpen] = React.useState(false);
+  const [iosDraft, setIosDraft] = React.useState<Date>(() =>
+    minutesToDate(value),
+  );
+
+  const open = () => {
+    if (Platform.OS === "android") {
+      DateTimePickerAndroid.open({
+        value: minutesToDate(value),
+        mode: "time",
+        onChange: (event: DateTimePickerEvent, date?: Date) => {
+          if (event.type === "set" && date) {
+            onChange(dateToMinutes(date));
+          }
+        },
+      });
+    } else if (Platform.OS === "ios") {
+      setIosDraft(minutesToDate(value));
+      setIosOpen(true);
+    } else {
+      // Web fallback: prompt for HH:MM
+      // eslint-disable-next-line no-alert
+      const current = minutesToDate(value);
+      const hh = current.getHours().toString().padStart(2, "0");
+      const mm = current.getMinutes().toString().padStart(2, "0");
+      const input =
+        typeof window !== "undefined"
+          ? window.prompt(`${label} (HH:MM, 24-hour)`, `${hh}:${mm}`)
+          : null;
+      if (input) {
+        const match = input.trim().match(/^(\d{1,2}):(\d{2})$/);
+        if (match) {
+          const h = Math.min(23, Math.max(0, parseInt(match[1], 10)));
+          const m = Math.min(59, Math.max(0, parseInt(match[2], 10)));
+          onChange(h * 60 + m);
+        }
+      }
+    }
+  };
+
   return (
-    <View style={styles.row}>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.rowLabel, { color: colors.foreground }]}>
-          {label}
-        </Text>
-      </View>
-      <View style={styles.stepper}>
-        <Pressable
-          onPress={dec}
-          accessibilityRole="button"
-          accessibilityLabel={`Earlier ${label}`}
-          style={({ pressed }) => [
-            styles.stepBtn,
-            { backgroundColor: colors.muted, opacity: pressed ? 0.7 : 1 },
-          ]}
-        >
-          <Feather name="minus" size={16} color={colors.foreground} />
-        </Pressable>
-        <View style={[styles.stepValueWrap, { minWidth: 90 }]}>
-          <Text style={[styles.stepValue, { color: colors.foreground }]}>
-            {formatClock(value)}
+    <>
+      <Pressable
+        onPress={open}
+        accessibilityRole="button"
+        accessibilityLabel={`${label} time, ${formatClock(value)}. Tap to change.`}
+        style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+            {label}
           </Text>
         </View>
-        <Pressable
-          onPress={inc}
-          accessibilityRole="button"
-          accessibilityLabel={`Later ${label}`}
-          style={({ pressed }) => [
-            styles.stepBtn,
-            { backgroundColor: colors.muted, opacity: pressed ? 0.7 : 1 },
+        <View
+          style={[
+            styles.clockPill,
+            { backgroundColor: colors.muted },
           ]}
         >
-          <Feather name="plus" size={16} color={colors.foreground} />
-        </Pressable>
-      </View>
-    </View>
+          <Text style={[styles.clockPillText, { color: colors.foreground }]}>
+            {formatClock(value)}
+          </Text>
+          <Feather name="clock" size={14} color={colors.mutedForeground} />
+        </View>
+      </Pressable>
+      {Platform.OS === "ios" ? (
+        <Modal
+          visible={iosOpen}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIosOpen(false)}
+        >
+          <Pressable
+            style={styles.iosPickerBackdrop}
+            onPress={() => setIosOpen(false)}
+          >
+            <Pressable
+              style={[
+                styles.iosPickerSheet,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+              onPress={() => {}}
+            >
+              <View style={styles.iosPickerHeader}>
+                <Pressable
+                  onPress={() => setIosOpen(false)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                >
+                  <Text
+                    style={[
+                      styles.iosPickerAction,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    Cancel
+                  </Text>
+                </Pressable>
+                <Text
+                  style={[
+                    styles.iosPickerTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  {label}
+                </Text>
+                <Pressable
+                  onPress={() => {
+                    onChange(dateToMinutes(iosDraft));
+                    setIosOpen(false);
+                  }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Done"
+                >
+                  <Text
+                    style={[styles.iosPickerAction, { color: colors.primary }]}
+                  >
+                    Done
+                  </Text>
+                </Pressable>
+              </View>
+              <DateTimePicker
+                value={iosDraft}
+                mode="time"
+                display="spinner"
+                onChange={(_event, date) => {
+                  if (date) setIosDraft(date);
+                }}
+                themeVariant={colors.background === "#000000" ? "dark" : undefined}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
+    </>
   );
 }
 
@@ -1341,6 +1454,45 @@ const styles = StyleSheet.create({
   stepUnit: {
     fontSize: 12,
     fontFamily: "Inter_500Medium",
+  },
+  clockPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  clockPillText: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+    fontVariant: ["tabular-nums"],
+  },
+  iosPickerBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  iosPickerSheet: {
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 24,
+  },
+  iosPickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  iosPickerTitle: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+  },
+  iosPickerAction: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
   },
   themeGrid: {
     flexDirection: "row",
