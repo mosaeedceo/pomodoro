@@ -516,13 +516,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const lastOverlayShownRef = useRef(false);
   const overlayPermissionRef = useRef<boolean | null>(null);
 
+  // Cross-build migration: if `floatingOverlayEnabled` was persisted by
+  // a prior custom build but the app now runs somewhere the native
+  // module is unavailable (Expo Go, iOS), flip back to the sticky
+  // notification so the live countdown keeps working.
+  useEffect(() => {
+    if (!loaded) return;
+    if (settingsRef.current.floatingOverlayEnabled && !FloatingPill.isAvailable()) {
+      setSettingsState((prev) => ({
+        ...prev,
+        floatingOverlayEnabled: false,
+        pillNotificationEnabled: true,
+      }));
+    }
+  }, [loaded]);
+
   // Re-check overlay permission on app resume so revocations take effect.
   useEffect(() => {
     if (Platform.OS !== "android") return;
     if (!FloatingPill.isAvailable()) return;
     const check = () => {
-      FloatingPill.hasOverlayPermission().then((g) => {
+      FloatingPill.hasOverlayPermission().then((g: boolean) => {
         overlayPermissionRef.current = g;
+        // Guaranteed fallback: if the user had picked "floating overlay"
+        // but permission is now denied/revoked, flip the live-countdown
+        // selection back to the sticky notification so they're never
+        // left without a live countdown.
+        if (!g && settingsRef.current.floatingOverlayEnabled) {
+          setSettingsState((prev) => ({
+            ...prev,
+            floatingOverlayEnabled: false,
+            pillNotificationEnabled: true,
+          }));
+        }
       });
     };
     check();
@@ -683,6 +709,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setSettings = useCallback((updates: Partial<Settings>) => {
     setSettingsState((prev) => {
       const newSettings = { ...prev, ...updates };
+      // Mutual exclusion: the live countdown can be off, sticky, or
+      // floating overlay — never both. Whichever toggle was just turned
+      // ON wins; the other is forced OFF.
+      if (
+        updates.floatingOverlayEnabled === true &&
+        updates.pillNotificationEnabled === undefined
+      ) {
+        newSettings.pillNotificationEnabled = false;
+      }
+      if (
+        updates.pillNotificationEnabled === true &&
+        updates.floatingOverlayEnabled === undefined
+      ) {
+        newSettings.floatingOverlayEnabled = false;
+      }
       // Only resync totalMs if the timer is in a fully reset state (not paused mid-session).
       // If pausedRemainingMs equals totalMs, the timer is fresh — safe to resync.
       const currentTimer = timerRef.current;

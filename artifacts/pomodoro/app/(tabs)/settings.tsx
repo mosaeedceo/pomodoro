@@ -327,23 +327,29 @@ export default function SettingsScreen() {
 
       {/* Alerts */}
       <Section title="Alerts" colors={colors}>
-        <ToggleRow
-          label="Pop-up pill notification"
-          description="Shows a sticky notification with the live countdown while a session is running"
-          value={settings.pillNotificationEnabled}
-          onChange={(v) => setSettings({ pillNotificationEnabled: v })}
+        <LiveCountdownRow
+          pillEnabled={settings.pillNotificationEnabled}
+          overlayEnabled={settings.floatingOverlayEnabled}
+          onChange={(mode) => {
+            if (mode === "off") {
+              setSettings({
+                pillNotificationEnabled: false,
+                floatingOverlayEnabled: false,
+              });
+            } else if (mode === "sticky") {
+              setSettings({
+                pillNotificationEnabled: true,
+                floatingOverlayEnabled: false,
+              });
+            } else {
+              setSettings({
+                pillNotificationEnabled: false,
+                floatingOverlayEnabled: true,
+              });
+            }
+          }}
           colors={colors}
         />
-        {Platform.OS === "android" ? (
-          <>
-            <Divider colors={colors} />
-            <FloatingOverlayRow
-              value={settings.floatingOverlayEnabled}
-              onChange={(v) => setSettings({ floatingOverlayEnabled: v })}
-              colors={colors}
-            />
-          </>
-        ) : null}
         <Divider colors={colors} />
         <ToggleRow
           label="Sound"
@@ -811,32 +817,36 @@ function ToggleRow({
   );
 }
 
-function FloatingOverlayRow({
-  value,
+type LiveCountdownMode = "off" | "sticky" | "overlay";
+
+function LiveCountdownRow({
+  pillEnabled,
+  overlayEnabled,
   onChange,
   colors,
 }: {
-  value: boolean;
-  onChange: (v: boolean) => void;
+  pillEnabled: boolean;
+  overlayEnabled: boolean;
+  onChange: (mode: LiveCountdownMode) => void;
   colors: ReturnType<typeof useColors>;
 }) {
-  const [available] = React.useState(() => FloatingPill.isAvailable());
-  const [hasPermission, setHasPermission] = React.useState<boolean>(false);
-  // True when the user just tried to enable the overlay and was sent to
-  // the system permission screen — used to auto-enable the toggle when
-  // they return with permission granted.
-  const pendingEnableRef = React.useRef(false);
+  const overlayAvailable = React.useMemo(
+    () => Platform.OS === "android" && FloatingPill.isAvailable(),
+    [],
+  );
+  const [hasPermission, setHasPermission] = React.useState(false);
+  const pendingOverlayRef = React.useRef(false);
 
   React.useEffect(() => {
+    if (!overlayAvailable) return;
     let cancelled = false;
-    if (!available) return;
     const recheck = () => {
-      FloatingPill.hasOverlayPermission().then((granted) => {
+      FloatingPill.hasOverlayPermission().then((granted: boolean) => {
         if (cancelled) return;
         setHasPermission(granted);
-        if (granted && pendingEnableRef.current) {
-          pendingEnableRef.current = false;
-          onChange(true);
+        if (granted && pendingOverlayRef.current) {
+          pendingOverlayRef.current = false;
+          onChange("overlay");
         }
       });
     };
@@ -848,38 +858,45 @@ function FloatingOverlayRow({
       cancelled = true;
       sub.remove();
     };
-  }, [available, onChange]);
+  }, [overlayAvailable, onChange]);
 
-  const handleToggle = async (next: boolean) => {
-    if (!next) {
-      onChange(false);
-      return;
-    }
-    if (!available) {
+  const current: LiveCountdownMode = overlayEnabled
+    ? "overlay"
+    : pillEnabled
+      ? "sticky"
+      : "off";
+
+  const selectOverlay = async () => {
+    if (!overlayAvailable) {
       Alert.alert(
         "Custom build required",
-        "The floating overlay needs Android's \"Display over other apps\" permission, which is only available in a custom build of the app — not in Expo Go. Build the app with `expo run:android` (or EAS Build) and try again.",
+        "The floating overlay needs Android's \"Display over other apps\" permission, which is only available in a custom build of the app — not in Expo Go. The sticky notification will keep showing the live countdown.",
         [{ text: "OK" }],
       );
+      onChange("sticky");
       return;
     }
     const granted = await FloatingPill.hasOverlayPermission();
     if (granted) {
       setHasPermission(true);
-      onChange(true);
+      onChange("overlay");
       return;
     }
     Alert.alert(
       "Allow display over other apps",
-      "Pomodoro needs the \"Display over other apps\" permission so the live timer pill can float above other apps. Tap Open Settings, then enable the permission for Pomodoro and come back to this screen.",
+      "Pomodoro needs the \"Display over other apps\" permission so the live timer pill can float above other apps. Tap Open Settings, then enable the permission for Pomodoro and come back. If you cancel, the sticky notification keeps the live countdown visible.",
       [
-        { text: "Cancel", style: "cancel" },
+        {
+          text: "Cancel",
+          style: "cancel",
+          onPress: () => onChange("sticky"),
+        },
         {
           text: "Open Settings",
           onPress: async () => {
-            // Mark intent so the AppState resume re-check auto-enables
-            // the toggle once permission is granted in system settings.
-            pendingEnableRef.current = true;
+            pendingOverlayRef.current = true;
+            // Until granted, fall back to the sticky notification.
+            onChange("sticky");
             await FloatingPill.requestOverlayPermission();
           },
         },
@@ -887,36 +904,120 @@ function FloatingOverlayRow({
     );
   };
 
-  const description = !available
-    ? "Not available in Expo Go — requires a custom dev build of the app."
-    : hasPermission
+  const handleSelect = (mode: LiveCountdownMode) => {
+    if (mode === current) return;
+    if (mode === "overlay") {
+      selectOverlay();
+      return;
+    }
+    onChange(mode);
+  };
+
+  const description =
+    current === "overlay"
       ? "A draggable timer pill floats above other apps while a session runs. Tap it to open Pomodoro; tap the icon to play/pause."
-      : "Needs Android's \"Display over other apps\" permission. Toggle on to grant.";
+      : current === "sticky"
+        ? "A sticky notification shows the live countdown while a session is running."
+        : "No live countdown shown outside the app.";
+
+  const segments: { value: LiveCountdownMode; label: string; show: boolean }[] = [
+    { value: "off", label: "Off", show: true },
+    { value: "sticky", label: "Sticky", show: true },
+    { value: "overlay", label: "Floating", show: Platform.OS === "android" },
+  ];
+  const visible = segments.filter((s) => s.show);
 
   return (
-    <View style={styles.row}>
-      <View style={{ flex: 1, paddingRight: 12 }}>
+    <View style={{ paddingVertical: 14, paddingHorizontal: 16, gap: 10 }}>
+      <View>
         <Text style={[styles.rowLabel, { color: colors.foreground }]}>
-          Floating overlay (Android)
+          Live countdown
         </Text>
-        <Text
-          style={[styles.rowDescription, { color: colors.mutedForeground }]}
-        >
+        <Text style={[styles.rowDescription, { color: colors.mutedForeground }]}>
           {description}
         </Text>
+        {Platform.OS === "android" && !overlayAvailable ? (
+          <Text
+            style={[
+              styles.rowDescription,
+              { color: colors.mutedForeground, marginTop: 4 },
+            ]}
+          >
+            Floating overlay needs a custom dev build (not Expo Go).
+          </Text>
+        ) : null}
       </View>
-      <Switch
-        value={value && available && hasPermission}
-        onValueChange={handleToggle}
-        disabled={!available}
-        trackColor={{ false: colors.muted, true: colors.primary }}
-        thumbColor="#ffffff"
-        ios_backgroundColor={colors.muted}
-        accessibilityLabel="Floating overlay (Android)"
-      />
+      <View
+        style={[
+          liveStyles.segmentWrap,
+          { backgroundColor: colors.muted, borderColor: colors.border },
+        ]}
+      >
+        {visible.map((seg) => {
+          const selected = current === seg.value;
+          const disabled =
+            seg.value === "overlay" && Platform.OS === "android" &&
+            !overlayAvailable;
+          return (
+            <Pressable
+              key={seg.value}
+              onPress={() => !disabled && handleSelect(seg.value)}
+              accessibilityRole="button"
+              accessibilityLabel={`Live countdown: ${seg.label}`}
+              accessibilityState={{ selected, disabled }}
+              style={({ pressed }) => [
+                liveStyles.segment,
+                {
+                  backgroundColor: selected ? colors.primary : "transparent",
+                  opacity: disabled ? 0.4 : pressed ? 0.75 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  liveStyles.segmentLabel,
+                  {
+                    color: selected ? "#ffffff" : colors.foreground,
+                    fontFamily: selected
+                      ? "Inter_600SemiBold"
+                      : "Inter_500Medium",
+                  },
+                ]}
+              >
+                {seg.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {current === "overlay" && !hasPermission && overlayAvailable ? (
+        <Text style={[styles.rowDescription, { color: colors.mutedForeground }]}>
+          Waiting for &quot;Display over other apps&quot; permission. Falling
+          back to the sticky notification meanwhile.
+        </Text>
+      ) : null}
     </View>
   );
 }
+
+const liveStyles = StyleSheet.create({
+  segmentWrap: {
+    flexDirection: "row",
+    borderRadius: 999,
+    padding: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  segment: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  segmentLabel: {
+    fontSize: 13,
+  },
+});
 
 function AlarmSoundRow({
   value,
