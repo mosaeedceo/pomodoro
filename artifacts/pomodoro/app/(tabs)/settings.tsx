@@ -1061,7 +1061,7 @@ function LiveCountdownRow({
               { color: colors.mutedForeground, marginTop: 4 },
             ]}
           >
-            Floating overlay is available in this APK/custom build, but not in
+            Floating overlay requires a custom dev build and is not available in
             Expo Go.
           </Text>
         ) : null}

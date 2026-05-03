@@ -27,6 +27,7 @@ class FloatingPillService : Service() {
   private var timeView: TextView? = null
   private var taskView: TextView? = null
   private var toggleView: TextView? = null
+  private var dotView: View? = null
   private var downRawX = 0f
   private var downRawY = 0f
   private var downX = 0
@@ -103,10 +104,10 @@ class FloatingPillService : Service() {
       elevation = 10.dp.toFloat()
     }
 
-    val dot = View(this).apply {
+    dotView = View(this).apply {
       background = DotDrawable(state.color)
     }
-    root.addView(dot, LinearLayout.LayoutParams(10.dp, 10.dp).apply {
+    root.addView(dotView, LinearLayout.LayoutParams(10.dp, 10.dp).apply {
       marginEnd = 10.dp
     })
 
@@ -167,6 +168,8 @@ class FloatingPillService : Service() {
     taskView?.text = state.task
     taskView?.visibility = if (state.task.isBlank()) View.GONE else View.VISIBLE
     toggleView?.text = if (state.running) "Ⅱ" else "▶"
+    dotView?.background = DotDrawable(state.color)
+    toggleView?.background = CircleDrawable(state.color)
   }
 
   private fun handleTouch(view: View, event: MotionEvent): Boolean {
