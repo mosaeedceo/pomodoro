@@ -21,8 +21,9 @@ import {
   type AccentName,
   type ThemeName,
 } from "@/constants/colors";
-import { PRESETS, useApp } from "@/contexts/AppContext";
+import { PRESETS, useApp, type SessionType } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { formatTime } from "@/lib/format";
 
 function formatClock(minutesFromMidnight: number): string {
   const m = ((minutesFromMidnight % (24 * 60)) + 24 * 60) % (24 * 60);
@@ -37,8 +38,40 @@ export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const scheme = useColorScheme();
-  const { settings, setSettings, resetSettings, applyPreset, exportStats } =
-    useApp();
+  const {
+    settings,
+    setSettings,
+    resetSettings,
+    applyPreset,
+    exportStats,
+    timer,
+    remainingMs,
+  } = useApp();
+
+  const previewType: SessionType = timer.sessionType;
+  const previewColor =
+    previewType === "work"
+      ? colors.workColor
+      : previewType === "shortBreak"
+        ? colors.shortBreakColor
+        : colors.longBreakColor;
+  const previewLabel =
+    previewType === "work"
+      ? "Focus"
+      : previewType === "shortBreak"
+        ? "Short Break"
+        : "Long Break";
+  const previewTime = timer.isRunning
+    ? formatTime(remainingMs)
+    : formatTime(
+        (previewType === "work"
+          ? settings.workMinutes
+          : previewType === "shortBreak"
+            ? settings.shortBreakMinutes
+            : settings.longBreakMinutes) *
+          60 *
+          1000,
+      );
 
   const haptic = () => {
     if (Platform.OS !== "web") {
@@ -93,6 +126,51 @@ export default function SettingsScreen() {
             Reset
           </Text>
         </Pressable>
+      </View>
+
+      {/* Live pill preview */}
+      <View
+        style={[
+          styles.previewWrap,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <Text style={[styles.previewCaption, { color: colors.mutedForeground }]}>
+          Live preview
+        </Text>
+        <View
+          style={[
+            styles.previewPill,
+            {
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <View style={[styles.previewDot, { backgroundColor: previewColor }]} />
+          <View style={{ flex: 1 }}>
+            <Text
+              style={[styles.previewLabel, { color: colors.mutedForeground }]}
+            >
+              {previewLabel}
+            </Text>
+            <Text style={[styles.previewTime, { color: colors.foreground }]}>
+              {previewTime}
+            </Text>
+          </View>
+          <View
+            style={[styles.previewBtn, { backgroundColor: previewColor }]}
+          >
+            <Feather
+              name={timer.isRunning ? "pause" : "play"}
+              size={14}
+              color="#ffffff"
+            />
+          </View>
+        </View>
       </View>
 
       {/* Quick presets */}
@@ -754,6 +832,52 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_400Regular",
     marginTop: 2,
     lineHeight: 16,
+  },
+  previewWrap: {
+    padding: 14,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 10,
+  },
+  previewCaption: {
+    fontSize: 11,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    paddingHorizontal: 4,
+  },
+  previewPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  previewDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  previewLabel: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  previewTime: {
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: -0.3,
+    fontVariant: ["tabular-nums"],
+  },
+  previewBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
   presetCol: {},
   presetRow: {

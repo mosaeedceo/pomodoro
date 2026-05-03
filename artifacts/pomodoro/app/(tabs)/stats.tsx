@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useNavigation } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Platform,
@@ -121,7 +121,13 @@ export default function StatsScreen() {
     () => stats.filter((s) => s.completedAt >= periodCutoff),
     [stats, periodCutoff],
   );
-  const recent = filtered.slice(0, 30);
+  const PAGE_SIZE = 12;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [period]);
+  const recent = filtered.slice(0, visibleCount);
+  const hasMore = filtered.length > visibleCount;
 
   const goalProgress =
     settings.dailyGoal > 0
@@ -531,6 +537,24 @@ export default function StatsScreen() {
             );
           })
         )}
+        {hasMore ? (
+          <Pressable
+            onPress={() => setVisibleCount((n) => n + PAGE_SIZE)}
+            accessibilityRole="button"
+            accessibilityLabel="Show more sessions"
+            style={({ pressed }) => [
+              styles.showMore,
+              {
+                borderTopColor: colors.border,
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.showMoreText, { color: colors.primary }]}>
+              Show more ({filtered.length - visibleCount} more)
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {/* Goal CTA when not set */}
@@ -767,6 +791,16 @@ const styles = StyleSheet.create({
   },
   resumeText: {
     fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+  },
+  showMore: {
+    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+  },
+  showMoreText: {
+    fontSize: 13,
     fontFamily: "Inter_600SemiBold",
   },
   goalCta: {
