@@ -5,10 +5,12 @@ import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 
 export default function TabLayout() {
   const colors = useColors();
   const scheme = useColorScheme();
+  const layout = useResponsiveLayout();
   const isDark = scheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
@@ -19,13 +21,13 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
         headerShown: false,
-        tabBarShowLabel: false,
+        tabBarShowLabel: layout.isTablet,
         tabBarStyle: {
           position: "absolute",
           backgroundColor: isIOS ? "transparent" : colors.card,
           borderTopWidth: 0,
           elevation: 0,
-          height: isWeb ? 84 : undefined,
+          height: isWeb ? 84 : layout.isTablet ? 76 : undefined,
         },
         tabBarBackground: () =>
           isIOS ? (

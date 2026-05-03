@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CircularProgress } from "@/components/CircularProgress";
 import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { dayLabel, formatMinutes, startOfDay } from "@/lib/format";
 
 type Period = "today" | "week" | "month" | "all";
@@ -22,6 +23,7 @@ type Period = "today" | "week" | "month" | "all";
 export default function StatsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const layout = useResponsiveLayout();
   const navigation = useNavigation();
   const {
     stats,
@@ -171,6 +173,9 @@ export default function StatsScreen() {
         {
           paddingTop: insets.top + 16,
           paddingBottom: insets.bottom + 200,
+          maxWidth: layout.maxContentWidth,
+          alignSelf: "center",
+          width: "100%",
         },
       ]}
       showsVerticalScrollIndicator={false}
