@@ -13,6 +13,8 @@ import React, {
 import { AppState, Platform, Share, Vibration } from "react-native";
 
 import type { AccentName, ThemeName } from "@/constants/colors";
+import { playAlarmSound } from "@/lib/alarmPlayer";
+import { DEFAULT_ALARM_SOUND, type AlarmSoundName } from "@/lib/alarmSounds";
 
 export type SessionType = "work" | "shortBreak" | "longBreak";
 
@@ -27,6 +29,8 @@ export interface Settings {
   vibrationEnabled: boolean;
   tickEnabled: boolean;
   pillNotificationEnabled: boolean;
+  alarmSound: AlarmSoundName;
+  alarmVolume: number;
   themeName: ThemeName;
   accentName: AccentName;
   dailyGoal: number;
@@ -47,6 +51,8 @@ export const DEFAULT_SETTINGS: Settings = {
   vibrationEnabled: true,
   tickEnabled: false,
   pillNotificationEnabled: true,
+  alarmSound: DEFAULT_ALARM_SOUND,
+  alarmVolume: 0.8,
   themeName: "crimson",
   accentName: "default",
   dailyGoal: 6,
@@ -448,9 +454,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (s.vibrationEnabled && Platform.OS !== "web" && !inQuiet) {
       Vibration.vibrate([0, 250, 250, 250]);
     }
-    // The scheduled local notification fires the sound/banner reliably.
-    // Cancel it now in case auto-complete fired before the OS trigger.
+    // The scheduled local notification fires the sound/banner reliably when
+    // the JS bridge is paused. Cancel it in case auto-complete fired before
+    // the OS trigger so we don't double up.
     cancelScheduledEnd();
+    if (s.soundEnabled && !inQuiet) {
+      playAlarmSound(s.alarmSound, s.alarmVolume);
+    }
 
     const startedAt = shouldAutoStart ? Date.now() : null;
     setTimer({

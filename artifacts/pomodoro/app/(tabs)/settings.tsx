@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import Slider from "@react-native-community/slider";
 import * as Haptics from "expo-haptics";
 import React from "react";
 import {
@@ -24,6 +25,8 @@ import {
 import { PRESETS, useApp, type SessionType } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { formatTime } from "@/lib/format";
+import { playAlarmSound } from "@/lib/alarmPlayer";
+import { ALARM_SOUNDS, type AlarmSoundName } from "@/lib/alarmSounds";
 
 function formatClock(minutesFromMidnight: number): string {
   const m = ((minutesFromMidnight % (24 * 60)) + 24 * 60) % (24 * 60);
@@ -332,9 +335,30 @@ export default function SettingsScreen() {
         <Divider colors={colors} />
         <ToggleRow
           label="Sound"
-          description="Play a notification sound when a session ends"
+          description="Play an alarm sound when a session ends"
           value={settings.soundEnabled}
           onChange={(v) => setSettings({ soundEnabled: v })}
+          colors={colors}
+        />
+        <Divider colors={colors} />
+        <AlarmSoundRow
+          value={settings.alarmSound}
+          volume={settings.alarmVolume}
+          enabled={settings.soundEnabled}
+          onChange={(v) => {
+            haptic();
+            setSettings({ alarmSound: v });
+          }}
+          colors={colors}
+        />
+        <Divider colors={colors} />
+        <VolumeRow
+          value={settings.alarmVolume}
+          enabled={settings.soundEnabled}
+          onChange={(v) => setSettings({ alarmVolume: v })}
+          onPreview={() =>
+            playAlarmSound(settings.alarmSound, settings.alarmVolume)
+          }
           colors={colors}
         />
         <Divider colors={colors} />
@@ -776,6 +800,181 @@ function ToggleRow({
     </View>
   );
 }
+
+function AlarmSoundRow({
+  value,
+  volume,
+  enabled,
+  onChange,
+  colors,
+}: {
+  value: AlarmSoundName;
+  volume: number;
+  enabled: boolean;
+  onChange: (v: AlarmSoundName) => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  return (
+    <View style={{ paddingVertical: 14, paddingHorizontal: 16, gap: 10 }}>
+      <View style={{ gap: 2 }}>
+        <Text
+          style={[
+            styles.rowLabel,
+            { color: enabled ? colors.foreground : colors.mutedForeground },
+          ]}
+        >
+          Alarm sound
+        </Text>
+        <Text style={[styles.rowDescription, { color: colors.mutedForeground }]}>
+          Tap a sound to select. Tap again to preview.
+        </Text>
+      </View>
+      <View style={alarmStyles.grid}>
+        {ALARM_SOUNDS.map((s) => {
+          const selected = value === s.name;
+          return (
+            <Pressable
+              key={s.name}
+              disabled={!enabled}
+              onPress={() => {
+                if (Platform.OS !== "web") {
+                  Haptics.selectionAsync().catch(() => {});
+                }
+                if (selected) {
+                  playAlarmSound(s.name, volume);
+                } else {
+                  onChange(s.name);
+                  playAlarmSound(s.name, volume);
+                }
+              }}
+              style={({ pressed }) => [
+                alarmStyles.chip,
+                {
+                  backgroundColor: selected ? colors.primary : colors.muted,
+                  opacity: !enabled ? 0.5 : pressed ? 0.75 : 1,
+                },
+              ]}
+            >
+              <Feather
+                name={selected ? "volume-2" : "play"}
+                size={12}
+                color={selected ? "#ffffff" : colors.foreground}
+              />
+              <Text
+                style={[
+                  alarmStyles.chipLabel,
+                  {
+                    color: selected ? "#ffffff" : colors.foreground,
+                    fontFamily: selected
+                      ? "Inter_600SemiBold"
+                      : "Inter_500Medium",
+                  },
+                ]}
+              >
+                {s.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function VolumeRow({
+  value,
+  enabled,
+  onChange,
+  onPreview,
+  colors,
+}: {
+  value: number;
+  enabled: boolean;
+  onChange: (v: number) => void;
+  onPreview: () => void;
+  colors: ReturnType<typeof useColors>;
+}) {
+  const pct = Math.round(value * 100);
+  return (
+    <View style={{ paddingVertical: 14, paddingHorizontal: 16, gap: 8 }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={[
+              styles.rowLabel,
+              { color: enabled ? colors.foreground : colors.mutedForeground },
+            ]}
+          >
+            Volume
+          </Text>
+          <Text
+            style={[styles.rowDescription, { color: colors.mutedForeground }]}
+          >
+            {enabled ? `${pct}%` : "Sound is off"}
+          </Text>
+        </View>
+        <Pressable
+          onPress={onPreview}
+          disabled={!enabled}
+          style={({ pressed }) => [
+            alarmStyles.previewBtn,
+            {
+              backgroundColor: colors.primary,
+              opacity: !enabled ? 0.4 : pressed ? 0.75 : 1,
+            },
+          ]}
+        >
+          <Feather name="play" size={12} color="#ffffff" />
+          <Text style={alarmStyles.previewBtnLabel}>Preview</Text>
+        </Pressable>
+      </View>
+      <Slider
+        style={{ width: "100%", height: 32 }}
+        minimumValue={0}
+        maximumValue={1}
+        step={0.05}
+        value={value}
+        disabled={!enabled}
+        onValueChange={onChange}
+        minimumTrackTintColor={colors.primary}
+        maximumTrackTintColor={colors.border}
+        thumbTintColor={colors.primary}
+      />
+    </View>
+  );
+}
+
+const alarmStyles = StyleSheet.create({
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  chipLabel: {
+    fontSize: 13,
+  },
+  previewBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  previewBtnLabel: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontFamily: "Inter_600SemiBold",
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
