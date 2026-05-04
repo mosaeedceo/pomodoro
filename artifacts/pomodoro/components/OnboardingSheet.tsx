@@ -37,11 +37,6 @@ export function OnboardingSheet() {
       title: t("onboarding.row3Title"),
       body: t("onboarding.row3Body"),
     },
-    {
-      icon: "grid",
-      title: t("onboarding.row4Title"),
-      body: t("onboarding.row4Body"),
-    },
   ];
 
   const visible = loaded && !settings.onboardingCompleted;
