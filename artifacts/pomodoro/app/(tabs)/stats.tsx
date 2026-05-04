@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from "react-native";
+import Svg, { Circle, Line, Rect, Text as SvgText } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CircularProgress } from "@/components/CircularProgress";
@@ -110,19 +111,28 @@ export default function StatsScreen() {
     };
   }, [stats, settings.dailyGoal, settings.workMinutes]);
 
-  const linePoints = useMemo(() => {
+  const lineChart = useMemo(() => {
+    const width = 640;
+    const height = 104;
+    const labelHeight = 26;
+    const topInset = 18;
+    const bottomInset = 16;
+    const leftInset = 16;
+    const rightInset = 16;
+    const plotWidth = width - leftInset - rightInset;
+    const plotHeight = height - topInset - bottomInset;
     const chartWidth = Math.max(1, data.week.length - 1);
-    return data.week.map((d, i) => {
-      const x = (i / chartWidth) * 100;
-      const y = data.maxMinutes
-        ? 100 - (d.minutes / data.maxMinutes) * 100
-        : 100;
+    const points = data.week.map((d, i) => {
+      const ratio = data.maxMinutes
+        ? Math.min(1, Math.max(0, d.minutes / data.maxMinutes))
+        : 0;
       return {
         ...d,
-        x,
-        y: Math.min(100, Math.max(0, y)),
+        x: leftInset + (i / chartWidth) * plotWidth,
+        y: topInset + (1 - ratio) * plotHeight,
       };
     });
+    return { width, height, labelHeight, points };
   }, [data.week, data.maxMinutes]);
 
   const periodCutoff = useMemo(() => {
@@ -335,6 +345,7 @@ export default function StatsScreen() {
               onPress={() => setPeriod(p)}
               accessibilityRole="button"
               accessibilityLabel={`Show ${p}`}
+              hitSlop={6}
               style={[
                 styles.segment,
                 active
@@ -377,88 +388,82 @@ export default function StatsScreen() {
           {t("stats.thisWeek")}
         </Text>
         <View style={styles.chart}>
-          <View style={styles.linePlot}>
-            <View
-              style={[
-                styles.lineBase,
-                {
-                  borderColor: colors.border,
-                  backgroundColor: colors.primary + "14",
-                },
-              ]}
+          <Svg
+            width="100%"
+            height={lineChart.height + lineChart.labelHeight}
+            viewBox={`0 0 ${lineChart.width} ${lineChart.height + lineChart.labelHeight}`}
+          >
+            <Rect
+              x={0}
+              y={0}
+              width={lineChart.width}
+              height={lineChart.height}
+              rx={14}
+              fill={colors.primary + "14"}
             />
-            {linePoints.slice(0, -1).map((point, i) => {
-              const next = linePoints[i + 1];
-              const dx = next.x - point.x;
-              const dy = next.y - point.y;
-              const length = Math.sqrt(dx * dx + dy * dy);
-              const angle = Math.atan2(dy, dx);
+            <Line
+              x1={16}
+              y1={lineChart.height - 16}
+              x2={lineChart.width - 16}
+              y2={lineChart.height - 16}
+              stroke={colors.border}
+              strokeWidth={1}
+            />
+            {lineChart.points.slice(0, -1).map((point, i) => {
+              const next = lineChart.points[i + 1];
               return (
-                <View
+                <Line
                   key={`line-${i}`}
-                  style={[
-                    styles.lineSegment,
-                    {
-                      left: `${point.x}%`,
-                      top: `${point.y}%`,
-                      width: `${length}%`,
-                      backgroundColor: colors.primary,
-                      transform: [{ rotate: `${angle}rad` }],
-                    },
-                  ]}
+                  x1={point.x}
+                  y1={point.y}
+                  x2={next.x}
+                  y2={next.y}
+                  stroke={colors.primary}
+                  strokeWidth={3}
+                  strokeLinecap="round"
                 />
               );
             })}
-            {linePoints.map((d, i) => {
+            {lineChart.points.map((d, i) => {
               const isToday = i === data.week.length - 1;
-              const pointColor = isToday
-                ? colors.primary
-                : d.goalMet
-                  ? colors.primary
-                  : colors.accent;
+              const pointColor =
+                isToday || d.goalMet ? colors.primary : colors.accent;
               const pointOpacity = !isToday && !d.goalMet ? 0.55 : 1;
               return (
-                <View
-                  key={`point-${i}`}
-                  style={[
-                    styles.linePoint,
-                    {
-                      left: `${d.x}%`,
-                      top: `${d.y}%`,
-                      backgroundColor: pointColor,
-                      borderColor: colors.card,
-                      opacity: pointOpacity,
-                    },
-                  ]}
-                >
-                  <Text style={styles.linePointValue}>{d.minutes}</Text>
-                </View>
+                <React.Fragment key={`point-${i}`}>
+                  <SvgText
+                    x={d.x}
+                    y={Math.max(12, d.y - 12)}
+                    fill={colors.mutedForeground}
+                    fontSize={10}
+                    fontWeight="600"
+                    textAnchor="middle"
+                  >
+                    {d.minutes}
+                  </SvgText>
+                  <Circle
+                    cx={d.x}
+                    cy={d.y}
+                    r={7}
+                    fill={pointColor}
+                    fillOpacity={pointOpacity}
+                    stroke={colors.card}
+                    strokeWidth={3}
+                  />
+                  <SvgText
+                    x={d.x}
+                    y={lineChart.height + 18}
+                    fill={isToday ? colors.foreground : colors.mutedForeground}
+                    fontSize={11}
+                    fontWeight={isToday ? "700" : "500"}
+                    textAnchor="middle"
+                  >
+                    {d.label}
+                  </SvgText>
+                </React.Fragment>
               );
             })}
-          </View>
-          <View style={styles.chartLabels}>
-            {data.week.map((d, i) => {
-              const isToday = i === data.week.length - 1;
-              return (
-                <Text
-                  key={i}
-                  style={[
-                    styles.chartLabel,
-                    {
-                      color: isToday
-                        ? colors.foreground
-                        : colors.mutedForeground,
-                      fontFamily: isToday
-                        ? "Inter_600SemiBold"
-                        : "Inter_500Medium",
-                    },
-                  ]}
-                >
-                  {d.label}
-                </Text>
-              );
-            })}
-          </View>
+          </Svg>
         </View>
       </View>
 
@@ -769,52 +774,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   chart: {
-    height: 158,
-    gap: 12,
-  },
-  linePlot: {
-    flex: 1,
-    marginHorizontal: 8,
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  lineBase: {
-    ...StyleSheet.absoluteFillObject,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
-  },
-  lineSegment: {
-    position: "absolute",
-    height: 3,
-    borderRadius: 999,
-    transformOrigin: "left center",
-  },
-  linePoint: {
-    position: "absolute",
-    width: 18,
-    height: 18,
-    marginLeft: -9,
-    marginTop: -9,
-    borderRadius: 9,
-    borderWidth: 3,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  linePointValue: {
-    position: "absolute",
-    top: -22,
-    minWidth: 28,
-    textAlign: "center",
-    fontSize: 10,
-    fontFamily: "Inter_600SemiBold",
-    color: "#ffffff",
-  },
-  chartLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  chartLabel: {
-    fontSize: 11,
+    height: 130,
   },
   statRow: {
     flexDirection: "row",

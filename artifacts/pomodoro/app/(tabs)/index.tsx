@@ -60,9 +60,7 @@ export default function TimerScreen() {
 
   const progress =
     isStopwatch
-      ? timer.isRunning
-        ? (elapsedMs % 60_000) / 60_000
-        : 0
+      ? (Math.floor(elapsedMs / 1000) % 60) / 60
       : timer.totalMs > 0
         ? 1 - remainingMs / timer.totalMs
         : 0;
@@ -167,11 +165,12 @@ export default function TimerScreen() {
         ? t("timer.paused")
         : t("timer.ready");
   const circleSize = Math.min(
-    layout.isWide ? 340 : layout.isTablet ? 360 : 300,
+    layout.isWide ? 300 : layout.isTablet ? 340 : 300,
     width - 64,
-    height - 300,
+    height - (layout.isWide ? 220 : 300),
   );
-  const timerSize = Math.max(240, circleSize);
+  const timerSize = Math.max(layout.isWide ? 220 : 240, circleSize);
+  const isConstrainedWide = layout.isWide && height < 620;
 
   return (
     <View
@@ -242,7 +241,7 @@ export default function TimerScreen() {
         <View
           style={[
             styles.timerGrid,
-            layout.isWide ? styles.timerGridWide : null,
+            layout.isWide && !isConstrainedWide ? styles.timerGridWide : null,
           ]}
         >
           <View style={styles.timerPane}>
@@ -296,7 +295,7 @@ export default function TimerScreen() {
                       styles.time,
                       {
                         color: colors.foreground,
-                        fontSize: layout.isTablet ? 72 : 64,
+                        fontSize: layout.isWide ? 58 : layout.isTablet ? 72 : 64,
                       },
                     ]}
                   >
@@ -340,7 +339,7 @@ export default function TimerScreen() {
             <View
               style={[
                 styles.controls,
-                { paddingBottom: layout.isWide ? 0 : 110 },
+                { paddingBottom: layout.isWide || isConstrainedWide ? 0 : 110 },
               ]}
             >
               <Pressable

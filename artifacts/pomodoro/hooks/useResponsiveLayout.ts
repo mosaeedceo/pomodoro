@@ -7,7 +7,9 @@ export function useResponsiveLayout() {
   return useMemo(() => {
     const shortest = Math.min(width, height);
     const isTablet = shortest >= 600;
-    const isWide = width >= 840;
+    const isLandscape = width > height;
+    const isSplitLandscape = isLandscape && height < 620;
+    const isWide = width >= 840 && !isSplitLandscape;
     const maxContentWidth = isWide ? 980 : isTablet ? 720 : undefined;
 
     return {
@@ -15,6 +17,7 @@ export function useResponsiveLayout() {
       height,
       isTablet,
       isWide,
+      isSplitLandscape,
       maxContentWidth,
     };
   }, [height, width]);
