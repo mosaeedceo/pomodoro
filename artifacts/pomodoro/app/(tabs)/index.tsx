@@ -31,6 +31,7 @@ export default function TimerScreen() {
   const {
     timer,
     remainingMs,
+    elapsedMs,
     settings,
     stats,
     start,
@@ -48,6 +49,7 @@ export default function TimerScreen() {
     shortBreak: t("session.shortBreak"),
     longBreak: t("session.longBreak"),
   };
+  const isStopwatch = settings.timerMode === "stopwatch";
 
   const sessionColor =
     timer.sessionType === "work"
@@ -57,7 +59,13 @@ export default function TimerScreen() {
         : colors.longBreakColor;
 
   const progress =
-    timer.totalMs > 0 ? 1 - remainingMs / timer.totalMs : 0;
+    isStopwatch
+      ? timer.isRunning
+        ? (elapsedMs % 60_000) / 60_000
+        : 0
+      : timer.totalMs > 0
+        ? 1 - remainingMs / timer.totalMs
+        : 0;
 
   const todayCount = useMemo(() => {
     const today = startOfDay(Date.now());
@@ -80,7 +88,6 @@ export default function TimerScreen() {
       : nextSession === "shortBreak"
         ? settings.shortBreakMinutes
         : settings.longBreakMinutes;
-
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -142,7 +149,23 @@ export default function TimerScreen() {
   const currentRoundIndex = timer.completedRounds % totalRoundDots;
   const onWork = timer.sessionType === "work";
 
-  const endingSoon = timer.isRunning && remainingMs > 0 && remainingMs <= 10_000;
+  const endingSoon =
+    !isStopwatch && timer.isRunning && remainingMs > 0 && remainingMs <= 10_000;
+  const displayTime = isStopwatch ? elapsedMs : remainingMs;
+  const timerStatus = isStopwatch
+    ? timer.isRunning
+      ? t("timer.stopwatchRunning")
+      : elapsedMs > 0
+        ? t("timer.stopwatchPaused")
+        : t("timer.stopwatchReady")
+    : timer.isRunning
+      ? endingSoon
+        ? t("timer.endingSoon")
+        : t("timer.inProgress")
+      : timer.pausedRemainingMs != null &&
+          timer.pausedRemainingMs < timer.totalMs
+        ? t("timer.paused")
+        : t("timer.ready");
   const circleSize = Math.min(
     layout.isWide ? 340 : layout.isTablet ? 360 : 300,
     width - 64,
@@ -256,8 +279,8 @@ export default function TimerScreen() {
               accessibilityRole="button"
               accessibilityLabel={
                 timer.isRunning
-                  ? t("timer.pauseA11y", { time: formatTime(remainingMs) })
-                  : t("timer.startA11y", { time: formatTime(remainingMs) })
+                  ? t("timer.pauseA11y", { time: formatTime(displayTime) })
+                  : t("timer.startA11y", { time: formatTime(displayTime) })
               }
             >
               <Animated.View style={{ transform: [{ scale: pulse }] }}>
@@ -277,25 +300,20 @@ export default function TimerScreen() {
                       },
                     ]}
                   >
-                    {formatTime(remainingMs)}
+                    {formatTime(displayTime)}
                   </Text>
                   <Text
                     style={[styles.timeSubtitle, { color: colors.mutedForeground }]}
                   >
-                    {timer.isRunning
-                      ? endingSoon
-                        ? t("timer.endingSoon")
-                        : t("timer.inProgress")
-                      : timer.pausedRemainingMs != null &&
-                          timer.pausedRemainingMs < timer.totalMs
-                        ? t("timer.paused")
-                        : t("timer.ready")}
+                    {timerStatus}
                   </Text>
                   <Text
                     style={[styles.nextLabel, { color: colors.mutedForeground }]}
                     numberOfLines={1}
                   >
-                    {t("timer.next")}: {sessionLabels[nextSession]} · {nextDuration}m
+                    {isStopwatch
+                      ? t("timer.stopwatch")
+                      : `${t("timer.next")}: ${sessionLabels[nextSession]} · ${nextDuration}m`}
                   </Text>
                 </CircularProgress>
               </Animated.View>
@@ -373,7 +391,11 @@ export default function TimerScreen() {
                   },
                 ]}
               >
-                <Feather name="skip-forward" size={20} color={colors.foreground} />
+                <Feather
+                  name={isStopwatch ? "square" : "skip-forward"}
+                  size={20}
+                  color={colors.foreground}
+                />
               </Pressable>
             </View>
           </View>

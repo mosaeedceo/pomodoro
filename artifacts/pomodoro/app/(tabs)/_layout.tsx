@@ -88,7 +88,7 @@ export default function TabLayout() {
           title: t("tabs.settings"),
           tabBarIcon: ({ color, focused }) => (
             <Feather
-              name="sliders"
+              name="settings"
               size={focused ? 26 : 24}
               color={color}
             />

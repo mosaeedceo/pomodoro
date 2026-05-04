@@ -82,28 +82,35 @@ export default function SettingsScreen() {
 
   const previewType: SessionType = timer.sessionType;
   const previewColor =
-    previewType === "work"
+    settings.timerMode === "stopwatch"
+      ? colors.primary
+      : previewType === "work"
       ? colors.workColor
       : previewType === "shortBreak"
         ? colors.shortBreakColor
         : colors.longBreakColor;
   const previewLabel =
-    previewType === "work"
+    settings.timerMode === "stopwatch"
+      ? t("timer.stopwatch")
+      : previewType === "work"
       ? t("session.work")
       : previewType === "shortBreak"
         ? t("session.shortBreak")
         : t("session.longBreak");
-  const previewTime = timer.isRunning
-    ? formatTime(remainingMs)
-    : formatTime(
-        (previewType === "work"
-          ? settings.workMinutes
-          : previewType === "shortBreak"
-            ? settings.shortBreakMinutes
-            : settings.longBreakMinutes) *
-          60 *
-          1000,
-      );
+  const previewTime =
+    settings.timerMode === "stopwatch"
+      ? formatTime(0)
+      : timer.isRunning
+        ? formatTime(remainingMs)
+        : formatTime(
+            (previewType === "work"
+              ? settings.workMinutes
+              : previewType === "shortBreak"
+                ? settings.shortBreakMinutes
+                : settings.longBreakMinutes) *
+              60 *
+              1000,
+          );
 
   const haptic = () => {
     if (Platform.OS !== "web") {
@@ -345,6 +352,22 @@ export default function SettingsScreen() {
 
       {/* Behavior */}
       <Section title={t("settings.behavior")} colors={colors}>
+        <SegmentedChoice
+          value={settings.timerMode}
+          options={[
+            { value: "pomodoro", label: t("timer.pomodoro") },
+            { value: "stopwatch", label: t("timer.stopwatch") },
+          ]}
+          onChange={(value) => {
+            haptic();
+            setSettings({
+              timerMode: value === "stopwatch" ? "stopwatch" : "pomodoro",
+            });
+          }}
+          description={t("settings.timerModeDesc")}
+          colors={colors}
+        />
+        <Divider colors={colors} />
         <ToggleRow
           label={t("settings.autoStartBreaks")}
           description={t("settings.autoStartBreaksDesc")}
@@ -673,9 +696,6 @@ export default function SettingsScreen() {
         </Pressable>
       </Section>
 
-      <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-        {t("settings.footnote")}
-      </Text>
     </ScrollView>
   );
 }
@@ -1808,12 +1828,5 @@ const styles = StyleSheet.create({
   },
   accentLabel: {
     fontSize: 11,
-  },
-  footnote: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 18,
-    paddingHorizontal: 8,
-    marginTop: -8,
   },
 });

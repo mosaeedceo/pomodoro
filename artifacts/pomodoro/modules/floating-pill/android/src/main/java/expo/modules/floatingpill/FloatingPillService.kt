@@ -41,8 +41,8 @@ class FloatingPillService : Service() {
   private val tickRunnable = object : Runnable {
     override fun run() {
       val state = currentState ?: return
-      if (state.running && state.endAt > 0L) {
-        val updated = state.copy(time = formatRemaining(state.endAt - System.currentTimeMillis()))
+      if (state.running) {
+        val updated = state.copy(time = formatDisplayTime(state))
         currentState = updated
         updatePill(updated)
         startForeground(NOTIFICATION_ID, buildNotification(updated))
@@ -78,6 +78,9 @@ class FloatingPillService : Service() {
       endAt = intent?.getLongExtra(FloatingPillEvents.EXTRA_END_AT, 0L) ?: 0L,
       totalMs = intent?.getLongExtra(FloatingPillEvents.EXTRA_TOTAL_MS, 0L) ?: 0L,
       shape = intent?.getStringExtra(FloatingPillEvents.EXTRA_SHAPE).orEmpty().ifBlank { "classic" },
+      mode = intent?.getStringExtra(FloatingPillEvents.EXTRA_MODE).orEmpty().ifBlank { "pomodoro" },
+      startedAt = intent?.getLongExtra(FloatingPillEvents.EXTRA_STARTED_AT, 0L) ?: 0L,
+      elapsedMs = intent?.getLongExtra(FloatingPillEvents.EXTRA_ELAPSED_MS, 0L) ?: 0L,
     )
 
     currentState = state
@@ -307,13 +310,28 @@ class FloatingPillService : Service() {
 
   private fun scheduleTick(state: FloatingPillState) {
     handler.removeCallbacks(tickRunnable)
-    if (state.running && state.endAt > 0L) {
+    if (state.running && (state.endAt > 0L || state.mode == "stopwatch")) {
       handler.postDelayed(tickRunnable, 1000L)
+    }
+  }
+
+  private fun formatDisplayTime(state: FloatingPillState): String {
+    return if (state.mode == "stopwatch") {
+      formatElapsed(System.currentTimeMillis() - state.startedAt + state.elapsedMs)
+    } else {
+      formatRemaining(state.endAt - System.currentTimeMillis())
     }
   }
 
   private fun formatRemaining(remainingMs: Long): String {
     val totalSeconds = kotlin.math.max(0L, (remainingMs + 999L) / 1000L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+  }
+
+  private fun formatElapsed(elapsedMs: Long): String {
+    val totalSeconds = kotlin.math.max(0L, elapsedMs / 1000L)
     val minutes = totalSeconds / 60L
     val seconds = totalSeconds % 60L
     return "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
@@ -331,6 +349,9 @@ class FloatingPillService : Service() {
     val endAt: Long,
     val totalMs: Long,
     val shape: String,
+    val mode: String,
+    val startedAt: Long,
+    val elapsedMs: Long,
   )
 
   companion object {

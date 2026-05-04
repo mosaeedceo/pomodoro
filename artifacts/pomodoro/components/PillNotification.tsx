@@ -26,7 +26,7 @@ export function PillNotification() {
   const layout = useResponsiveLayout();
   const navigation = useNavigation();
   const segments = useSegments() as string[];
-  const { timer, remainingMs, pause, start, settings } = useApp();
+  const { timer, remainingMs, elapsedMs, pause, start, settings } = useApp();
   const t = React.useMemo(
     () => createTranslator(settings.language),
     [settings.language],
@@ -34,7 +34,11 @@ export function PillNotification() {
   const resolvedScheme =
     settings.colorScheme === "system" ? colorScheme : settings.colorScheme;
   const isCompact = settings.pillShape === "compact";
-  const sessionLabel = t(`session.${timer.sessionType}`);
+  const isStopwatch = settings.timerMode === "stopwatch";
+  const displayMs = isStopwatch ? elapsedMs : remainingMs;
+  const sessionLabel = isStopwatch
+    ? t("timer.stopwatch")
+    : t(`session.${timer.sessionType}`);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
 
@@ -60,7 +64,9 @@ export function PillNotification() {
   }, [isVisible, opacity, translateY]);
 
   const sessionColor =
-    timer.sessionType === "work"
+    isStopwatch
+      ? colors.primary
+      : timer.sessionType === "work"
       ? colors.workColor
       : timer.sessionType === "shortBreak"
         ? colors.shortBreakColor
@@ -120,7 +126,7 @@ export function PillNotification() {
         onPress={handleOpen}
         style={isCompact ? styles.compactPressable : styles.pressable}
         accessibilityRole="button"
-        accessibilityLabel={`${sessionLabel} ${formatTime(remainingMs)}`}
+        accessibilityLabel={`${sessionLabel} ${formatTime(displayMs)}`}
       >
         <View
           style={[
@@ -161,7 +167,7 @@ export function PillNotification() {
               {sessionLabel}
             </Text>
             <Text style={[styles.time, { color: colors.foreground }]}>
-              {formatTime(remainingMs)}
+              {formatTime(displayMs)}
             </Text>
           </View>
           <Pressable

@@ -110,6 +110,21 @@ export default function StatsScreen() {
     };
   }, [stats, settings.dailyGoal, settings.workMinutes]);
 
+  const linePoints = useMemo(() => {
+    const chartWidth = Math.max(1, data.week.length - 1);
+    return data.week.map((d, i) => {
+      const x = (i / chartWidth) * 100;
+      const y = data.maxMinutes
+        ? 100 - (d.minutes / data.maxMinutes) * 100
+        : 100;
+      return {
+        ...d,
+        x,
+        y: Math.min(100, Math.max(0, y)),
+      };
+    });
+  }, [data.week, data.maxMinutes]);
+
   const periodCutoff = useMemo(() => {
     const now = Date.now();
     switch (period) {
@@ -362,32 +377,71 @@ export default function StatsScreen() {
           {t("stats.thisWeek")}
         </Text>
         <View style={styles.chart}>
-          {data.week.map((d, i) => {
-            const heightPct = data.maxMinutes
-              ? (d.minutes / data.maxMinutes) * 100
-              : 0;
-            const isToday = i === data.week.length - 1;
-            const barColor = isToday
-              ? colors.primary
-              : d.goalMet
+          <View style={styles.linePlot}>
+            <View
+              style={[
+                styles.lineBase,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.primary + "14",
+                },
+              ]}
+            />
+            {linePoints.slice(0, -1).map((point, i) => {
+              const next = linePoints[i + 1];
+              const dx = next.x - point.x;
+              const dy = next.y - point.y;
+              const length = Math.sqrt(dx * dx + dy * dy);
+              const angle = Math.atan2(dy, dx);
+              return (
+                <View
+                  key={`line-${i}`}
+                  style={[
+                    styles.lineSegment,
+                    {
+                      left: `${point.x}%`,
+                      top: `${point.y}%`,
+                      width: `${length}%`,
+                      backgroundColor: colors.primary,
+                      transform: [{ rotate: `${angle}rad` }],
+                    },
+                  ]}
+                />
+              );
+            })}
+            {linePoints.map((d, i) => {
+              const isToday = i === data.week.length - 1;
+              const pointColor = isToday
                 ? colors.primary
-                : colors.accent;
-            const barOpacity = !isToday && !d.goalMet ? 0.5 : 1;
-            return (
-              <View key={i} style={styles.chartCol}>
-                <View style={styles.chartBarWrap}>
-                  <View
-                    style={[
-                      styles.chartBar,
-                      {
-                        backgroundColor: barColor,
-                        opacity: barOpacity,
-                        height: `${Math.max(heightPct, 3)}%`,
-                      },
-                    ]}
-                  />
+                : d.goalMet
+                  ? colors.primary
+                  : colors.accent;
+              const pointOpacity = !isToday && !d.goalMet ? 0.55 : 1;
+              return (
+                <View
+                  key={`point-${i}`}
+                  style={[
+                    styles.linePoint,
+                    {
+                      left: `${d.x}%`,
+                      top: `${d.y}%`,
+                      backgroundColor: pointColor,
+                      borderColor: colors.card,
+                      opacity: pointOpacity,
+                    },
+                  ]}
+                >
+                  <Text style={styles.linePointValue}>{d.minutes}</Text>
                 </View>
+              );
+            })}
+          </View>
+          <View style={styles.chartLabels}>
+            {data.week.map((d, i) => {
+              const isToday = i === data.week.length - 1;
+              return (
                 <Text
+                  key={i}
                   style={[
                     styles.chartLabel,
                     {
@@ -402,9 +456,9 @@ export default function StatsScreen() {
                 >
                   {d.label}
                 </Text>
-              </View>
-            );
-          })}
+              );
+            })}
+          </View>
         </View>
       </View>
 
@@ -715,26 +769,49 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   chart: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    height: 140,
-    gap: 8,
+    height: 158,
+    gap: 12,
   },
-  chartCol: {
+  linePlot: {
     flex: 1,
+    marginHorizontal: 8,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  lineBase: {
+    ...StyleSheet.absoluteFillObject,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderRadius: 14,
+  },
+  lineSegment: {
+    position: "absolute",
+    height: 3,
+    borderRadius: 999,
+    transformOrigin: "left center",
+  },
+  linePoint: {
+    position: "absolute",
+    width: 18,
+    height: 18,
+    marginLeft: -9,
+    marginTop: -9,
+    borderRadius: 9,
+    borderWidth: 3,
     alignItems: "center",
-    height: "100%",
+    justifyContent: "center",
   },
-  chartBarWrap: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "flex-end",
-    paddingBottom: 8,
+  linePointValue: {
+    position: "absolute",
+    top: -22,
+    minWidth: 28,
+    textAlign: "center",
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    color: "#ffffff",
   },
-  chartBar: {
-    width: "100%",
-    borderRadius: 8,
-    minHeight: 4,
+  chartLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   chartLabel: {
     fontSize: 11,
