@@ -129,6 +129,7 @@ const NOTIFICATION_END_CHANNEL_ID = "pomodoro-alerts";
 const NOTIFICATION_END_QUIET_CHANNEL_ID = "pomodoro-alerts-quiet";
 const PILL_NOTIFICATION_ID = "pomodoro-pill-active";
 const SCHEDULED_END_ID = "pomodoro-end-scheduled";
+const AUTO_COMPLETE_POLL_MS = 1000;
 
 export type FloatingPillShape = "classic" | "rounded" | "square" | "compact";
 
@@ -189,6 +190,31 @@ function ceilToSecond(ms: number): number {
 
 function floorToSecond(ms: number): number {
   return Math.floor(ms / 1000) * 1000;
+}
+
+function displayRemainingMs(totalMs: number, startedAt: number, now: number): number {
+  return ceilToSecond(Math.max(0, totalMs - (now - startedAt)));
+}
+
+function actualRemainingMs(totalMs: number, startedAt: number, now: number): number {
+  return Math.max(0, totalMs - (now - startedAt));
+}
+
+function displayElapsedMs(
+  startedAt: number,
+  now: number,
+  pausedElapsedMs = 0,
+): number {
+  return floorToSecond(Math.max(0, pausedElapsedMs) + Math.max(0, now - startedAt));
+}
+
+function pauseDisplayMs(timer: TimerState, settings: Settings, now: number): number {
+  if (!timer.isRunning || timer.startedAt == null) {
+    return timer.pausedRemainingMs ?? (isStopwatchMode(settings) ? 0 : timer.totalMs);
+  }
+  return isStopwatchMode(settings)
+    ? displayElapsedMs(timer.startedAt, now, timer.pausedRemainingMs ?? 0)
+    : displayRemainingMs(timer.totalMs, timer.startedAt, now);
 }
 
 function makeId(): string {
@@ -476,18 +502,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return timer.pausedRemainingMs ?? timer.totalMs;
     }
     if (timer.startedAt == null) return timer.totalMs;
-    const elapsed = now - timer.startedAt;
-    return ceilToSecond(Math.max(0, timer.totalMs - elapsed));
+    return displayRemainingMs(timer.totalMs, timer.startedAt, now);
   }, [settings.timerMode, timer, now]);
 
   const elapsedMs = useMemo(() => {
     if (isStopwatchMode(settings)) {
       if (!timer.isRunning) return timer.pausedRemainingMs ?? 0;
       if (timer.startedAt == null) return timer.pausedRemainingMs ?? 0;
-      return floorToSecond(
-        Math.max(0, timer.pausedRemainingMs ?? 0) +
-          Math.max(0, now - timer.startedAt),
-      );
+      return displayElapsedMs(timer.startedAt, now, timer.pausedRemainingMs ?? 0);
     }
     return floorToSecond(Math.max(0, timer.totalMs - remainingMs));
   }, [settings.timerMode, timer, now, remainingMs]);
@@ -555,12 +577,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Auto-complete when remaining hits 0
+  // Auto-complete based on wall-clock time, not display-rounded seconds.
   useEffect(() => {
-    if (!isStopwatchMode(settings) && timer.isRunning && remainingMs <= 0) {
-      completeSession();
+    if (isStopwatchMode(settings) || !timer.isRunning || timer.startedAt == null) {
+      return;
     }
-  }, [settings, remainingMs, timer.isRunning, completeSession]);
+    const check = () => {
+      const current = timerRef.current;
+      const s = settingsRef.current;
+      if (
+        !isStopwatchMode(s) &&
+        current.isRunning &&
+        current.startedAt != null &&
+        actualRemainingMs(current.totalMs, current.startedAt, Date.now()) <= 0
+      ) {
+        completeSession();
+      }
+    };
+    check();
+    const timeout = setTimeout(check, Math.max(0, timer.startedAt + timer.totalMs - Date.now()));
+    const interval = setInterval(check, AUTO_COMPLETE_POLL_MS);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [
+    settings.timerMode,
+    timer.isRunning,
+    timer.startedAt,
+    timer.totalMs,
+    completeSession,
+  ]);
 
   // Tick haptic — plays once per second while running
   const lastTickSecondRef = useRef<number>(-1);
@@ -755,12 +802,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // call current pause via state update
         setTimer((prev) => {
           if (!prev.isRunning || prev.startedAt == null) return prev;
-          const elapsed = Date.now() - prev.startedAt;
-          const value = isStopwatchMode(settingsRef.current)
-            ? floorToSecond(
-                Math.max(0, prev.pausedRemainingMs ?? 0) + Math.max(0, elapsed),
-              )
-            : ceilToSecond(Math.max(0, prev.totalMs - elapsed));
+          const value = pauseDisplayMs(prev, settingsRef.current, Date.now());
           cancelScheduledEnd();
           return {
             ...prev,
@@ -800,11 +842,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Native side already brings the launcher activity forward; nothing
       // else needed here.
     });
+    const completeSub = FloatingPill.addListener("onComplete", () => {
+      const current = timerRef.current;
+      const s = settingsRef.current;
+      if (
+        !isStopwatchMode(s) &&
+        current.isRunning &&
+        current.startedAt != null &&
+        actualRemainingMs(current.totalMs, current.startedAt, Date.now()) <= 0
+      ) {
+        completeSession();
+      }
+    });
     return () => {
       toggleSub.remove();
       openSub.remove();
+      completeSub.remove();
     };
-  }, []);
+  }, [completeSession]);
 
   // Pill notification updater — throttled to once per minute change to avoid notification flicker
   const lastPillMinuteRef = useRef<number>(-1);
@@ -963,12 +1018,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const pause = useCallback(() => {
     setTimer((prev) => {
       if (!prev.isRunning || prev.startedAt == null) return prev;
-      const elapsed = Date.now() - prev.startedAt;
-      const remaining = isStopwatchMode(settingsRef.current)
-        ? floorToSecond(
-            Math.max(0, prev.pausedRemainingMs ?? 0) + Math.max(0, elapsed),
-          )
-        : ceilToSecond(Math.max(0, prev.totalMs - elapsed));
+      const remaining = pauseDisplayMs(prev, settingsRef.current, Date.now());
       cancelScheduledEnd();
       return {
         ...prev,

@@ -1,10 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useNavigation } from "expo-router";
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useMemo } from "react";
 import {
-  Animated,
-  Easing,
   Platform,
   Pressable,
   StyleSheet,
@@ -86,34 +84,6 @@ export default function TimerScreen() {
       : nextSession === "shortBreak"
         ? settings.shortBreakMinutes
         : settings.longBreakMinutes;
-  const pulse = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    pulse.stopAnimation();
-    if (!timer.isRunning) {
-      pulse.setValue(1);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1.04,
-          duration: 1400,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1400,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [timer.isRunning, pulse]);
-
   const haptic = () => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
@@ -286,7 +256,10 @@ export default function TimerScreen() {
             {/* Timer — tap anywhere to start/pause */}
             <Pressable
               onPress={handlePrimary}
-              style={styles.timerWrap}
+              style={[
+                styles.timerWrap,
+                { width: timerSize, height: timerSize, minHeight: timerSize },
+              ]}
               accessibilityRole="button"
               accessibilityLabel={
                 timer.isRunning
@@ -294,55 +267,53 @@ export default function TimerScreen() {
                   : t("timer.startA11y", { time: formatTime(displayTime) })
               }
             >
-              <Animated.View style={{ transform: [{ scale: pulse }] }}>
-                <CircularProgress
-                  size={timerSize}
-                  strokeWidth={compactTimerContent ? 10 : layout.isTablet ? 16 : 14}
-                  progress={progress}
-                  color={endingSoon ? colors.destructive : sessionColor}
-                  trackColor={colors.ringTrack}
+              <CircularProgress
+                size={timerSize}
+                strokeWidth={compactTimerContent ? 10 : layout.isTablet ? 16 : 14}
+                progress={progress}
+                color={endingSoon ? colors.destructive : sessionColor}
+                trackColor={colors.ringTrack}
+              >
+                <Text
+                  style={[
+                    styles.time,
+                    {
+                      color: colors.foreground,
+                      fontSize: compactTimerContent
+                        ? 44
+                        : layout.isWide
+                          ? 58
+                          : layout.isTablet
+                            ? 72
+                            : 64,
+                    },
+                  ]}
                 >
-                  <Text
-                    style={[
-                      styles.time,
-                      {
-                        color: colors.foreground,
-                        fontSize: compactTimerContent
-                          ? 44
-                          : layout.isWide
-                            ? 58
-                            : layout.isTablet
-                              ? 72
-                              : 64,
-                      },
-                    ]}
-                  >
-                    {formatTime(displayTime)}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.timeSubtitle,
-                      compactTimerContent ? styles.timeSubtitleCompact : null,
-                      { color: colors.mutedForeground },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {timerStatus}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.nextLabel,
-                      compactTimerContent ? styles.nextLabelCompact : null,
-                      { color: colors.mutedForeground },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {isStopwatch
-                      ? t("timer.stopwatch")
-                      : `${t("timer.next")}: ${sessionLabels[nextSession]} · ${nextDuration}m`}
-                  </Text>
-                </CircularProgress>
-              </Animated.View>
+                  {formatTime(displayTime)}
+                </Text>
+                <Text
+                  style={[
+                    styles.timeSubtitle,
+                    compactTimerContent ? styles.timeSubtitleCompact : null,
+                    { color: colors.mutedForeground },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {timerStatus}
+                </Text>
+                <Text
+                  style={[
+                    styles.nextLabel,
+                    compactTimerContent ? styles.nextLabelCompact : null,
+                    { color: colors.mutedForeground },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {isStopwatch
+                    ? t("timer.stopwatch")
+                    : `${t("timer.next")}: ${sessionLabels[nextSession]} · ${nextDuration}m`}
+                </Text>
+              </CircularProgress>
             </Pressable>
           </View>
 
@@ -475,7 +446,8 @@ const styles = StyleSheet.create({
   },
   sessionLabelRow: {
     alignItems: "center",
-    marginTop: 16,
+    marginTop: 8,
+    marginBottom: 12,
   },
   sessionPill: {
     flexDirection: "row",
@@ -504,10 +476,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   timerWrap: {
-    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 220,
   },
   timerGrid: {
     flex: 1,
@@ -519,6 +489,8 @@ const styles = StyleSheet.create({
   },
   timerPane: {
     flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   controlsPane: {
     flex: 1,

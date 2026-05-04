@@ -16,7 +16,7 @@ export interface FloatingPillState {
   elapsedMs?: number;
 }
 
-export type FloatingPillEvent = "onToggle" | "onOpen";
+export type FloatingPillEvent = "onToggle" | "onOpen" | "onComplete";
 
 interface NativeFloatingPillModule {
   isSupported(): boolean;
