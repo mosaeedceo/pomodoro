@@ -183,6 +183,14 @@ function isStopwatchMode(settings: Settings): boolean {
   return settings.timerMode === "stopwatch";
 }
 
+function ceilToSecond(ms: number): number {
+  return Math.ceil(ms / 1000) * 1000;
+}
+
+function floorToSecond(ms: number): number {
+  return Math.floor(ms / 1000) * 1000;
+}
+
 function makeId(): string {
   return Date.now().toString() + Math.random().toString(36).slice(2, 9);
 }
@@ -469,16 +477,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     if (timer.startedAt == null) return timer.totalMs;
     const elapsed = now - timer.startedAt;
-    return Math.max(0, timer.totalMs - elapsed);
+    return ceilToSecond(Math.max(0, timer.totalMs - elapsed));
   }, [settings.timerMode, timer, now]);
 
   const elapsedMs = useMemo(() => {
     if (isStopwatchMode(settings)) {
       if (!timer.isRunning) return timer.pausedRemainingMs ?? 0;
       if (timer.startedAt == null) return timer.pausedRemainingMs ?? 0;
-      return Math.max(0, timer.pausedRemainingMs ?? 0) + Math.max(0, now - timer.startedAt);
+      return floorToSecond(
+        Math.max(0, timer.pausedRemainingMs ?? 0) +
+          Math.max(0, now - timer.startedAt),
+      );
     }
-    return Math.max(0, timer.totalMs - remainingMs);
+    return floorToSecond(Math.max(0, timer.totalMs - remainingMs));
   }, [settings.timerMode, timer, now, remainingMs]);
 
   const completeSession = useCallback(() => {
@@ -746,8 +757,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (!prev.isRunning || prev.startedAt == null) return prev;
           const elapsed = Date.now() - prev.startedAt;
           const value = isStopwatchMode(settingsRef.current)
-            ? Math.max(0, prev.pausedRemainingMs ?? 0) + Math.max(0, elapsed)
-            : Math.max(0, prev.totalMs - elapsed);
+            ? floorToSecond(
+                Math.max(0, prev.pausedRemainingMs ?? 0) + Math.max(0, elapsed),
+              )
+            : ceilToSecond(Math.max(0, prev.totalMs - elapsed));
           cancelScheduledEnd();
           return {
             ...prev,
@@ -952,8 +965,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!prev.isRunning || prev.startedAt == null) return prev;
       const elapsed = Date.now() - prev.startedAt;
       const remaining = isStopwatchMode(settingsRef.current)
-        ? Math.max(0, prev.pausedRemainingMs ?? 0) + Math.max(0, elapsed)
-        : Math.max(0, prev.totalMs - elapsed);
+        ? floorToSecond(
+            Math.max(0, prev.pausedRemainingMs ?? 0) + Math.max(0, elapsed),
+          )
+        : ceilToSecond(Math.max(0, prev.totalMs - elapsed));
       cancelScheduledEnd();
       return {
         ...prev,
