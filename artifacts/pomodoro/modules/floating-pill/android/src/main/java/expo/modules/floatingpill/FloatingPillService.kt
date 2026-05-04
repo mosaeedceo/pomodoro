@@ -38,6 +38,8 @@ class FloatingPillService : Service() {
   private var downX = 0
   private var downY = 0
   private var moved = false
+  private var lastToggleAt = 0L
+
   private val tickRunnable = object : Runnable {
     override fun run() {
       val state = currentState ?: return
@@ -49,6 +51,17 @@ class FloatingPillService : Service() {
         handler.postDelayed(this, 1000L)
       }
     }
+  }
+  private fun toggleState(state: FloatingPillState): Boolean {
+    if (System.currentTimeMillis() - lastToggleAt < 350L) return false
+    lastToggleAt = System.currentTimeMillis()
+    val nextState = state.copy(running = !state.running)
+    currentState = nextState
+    updatePill(nextState)
+    startForeground(NOTIFICATION_ID, buildNotification(nextState))
+    scheduleTick(nextState)
+    sendBroadcast(Intent(FloatingPillEvents.ACTION_TOGGLE).setPackage(packageName))
+    return true
   }
 
   override fun onBind(intent: Intent?): IBinder? = null
@@ -185,7 +198,7 @@ class FloatingPillService : Service() {
       background = CircleDrawable(state.color)
       text = if (state.running) "Ⅱ" else "▶"
       setOnClickListener {
-        sendBroadcast(Intent(FloatingPillEvents.ACTION_TOGGLE).setPackage(packageName))
+        toggleState(currentState ?: state)
       }
     }
     root.addView(

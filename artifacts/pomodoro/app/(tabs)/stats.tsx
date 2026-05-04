@@ -14,13 +14,39 @@ import Svg, { Circle, Line, Rect, Text as SvgText } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { CircularProgress } from "@/components/CircularProgress";
-import { useApp } from "@/contexts/AppContext";
+import { useApp, type SessionRecord } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { dayLabel, formatMinutes, startOfDay } from "@/lib/format";
 import { createTranslator } from "@/lib/i18n";
 
 type Period = "today" | "week" | "month" | "all";
+type ChartBucket = {
+  label: string;
+  minutes: number;
+  date: number;
+  goalMet: boolean;
+};
+
+function shortDateLabel(timestamp: number): string {
+  const d = new Date(timestamp);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function monthLabel(timestamp: number): string {
+  return new Date(timestamp).toLocaleDateString(undefined, { month: "short" });
+}
+
+function chartMinutes(
+  workStats: SessionRecord[],
+  start: number,
+  end: number,
+): number {
+  const ms = workStats
+    .filter((s) => s.completedAt >= start && s.completedAt < end)
+    .reduce((acc, s) => acc + s.durationMs, 0);
+  return Math.round(ms / 60000);
+}
 
 export default function StatsScreen() {
   const colors = useColors();
@@ -51,27 +77,74 @@ export default function StatsScreen() {
       todaySessions.reduce((acc, s) => acc + s.durationMs, 0) / 60000,
     );
 
-    // 7-day buckets (oldest -> newest)
-    const week: { label: string; minutes: number; date: number; goalMet: boolean }[] = [];
     const goalMs = settings.dailyGoal * settings.workMinutes * 60 * 1000;
-    for (let i = 6; i >= 0; i--) {
-      const day = startOfDay(Date.now() - i * 24 * 60 * 60 * 1000);
-      const dayMs = stats
-        .filter(
-          (s) =>
-            s.type === "work" &&
-            s.completedAt >= day &&
-            s.completedAt < day + 24 * 60 * 60 * 1000,
-        )
-        .reduce((acc, s) => acc + s.durationMs, 0);
-      week.push({
-        label: dayLabel(day),
-        minutes: Math.round(dayMs / 60000),
-        date: day,
-        goalMet: goalMs > 0 && dayMs >= goalMs,
-      });
+    const workStats = stats.filter((s) => s.type === "work");
+    const dayMs = 24 * 60 * 60 * 1000;
+    const bucket = (start: number, end: number, label: string): ChartBucket => {
+      const minutes = chartMinutes(workStats, start, end);
+      return {
+        label,
+        minutes,
+        date: start,
+        goalMet: goalMs > 0 && minutes * 60 * 1000 >= goalMs,
+      };
+    };
+    const chartBuckets: ChartBucket[] = [];
+
+    if (period === "today") {
+      for (let hour = 0; hour < 24; hour += 4) {
+        const start = todayStart + hour * 60 * 60 * 1000;
+        chartBuckets.push(bucket(start, start + 4 * 60 * 60 * 1000, `${hour}:00`));
+      }
+    } else if (period === "week") {
+      for (let i = 6; i >= 0; i--) {
+        const day = startOfDay(Date.now() - i * dayMs);
+        chartBuckets.push(bucket(day, day + dayMs, dayLabel(day)));
+      }
+    } else if (period === "month") {
+      for (let i = 9; i >= 0; i--) {
+        const start = startOfDay(Date.now() - i * 3 * dayMs);
+        chartBuckets.push(bucket(start, start + 3 * dayMs, shortDateLabel(start)));
+      }
+    } else {
+      const sorted = [...workStats].sort((a, b) => a.completedAt - b.completedAt);
+      const first = sorted[0]?.completedAt;
+      if (first == null) {
+        const nowDate = new Date();
+        for (let i = 5; i >= 0; i--) {
+          const start = new Date(nowDate.getFullYear(), nowDate.getMonth() - i, 1).getTime();
+          const end = new Date(nowDate.getFullYear(), nowDate.getMonth() - i + 1, 1).getTime();
+          chartBuckets.push(bucket(start, end, monthLabel(start)));
+        }
+      } else {
+        const startDate = new Date(first);
+        const endDate = new Date();
+        const monthSpan =
+          (endDate.getFullYear() - startDate.getFullYear()) * 12 +
+          endDate.getMonth() -
+          startDate.getMonth() +
+          1;
+        if (monthSpan <= 12) {
+          for (let i = monthSpan - 1; i >= 0; i--) {
+            const start = new Date(endDate.getFullYear(), endDate.getMonth() - i, 1).getTime();
+            const end = new Date(endDate.getFullYear(), endDate.getMonth() - i + 1, 1).getTime();
+            chartBuckets.push(bucket(start, end, monthLabel(start)));
+          }
+        } else {
+          const start = startOfDay(first);
+          const end = Date.now() + dayMs;
+          const span = (end - start) / 12;
+          for (let i = 0; i < 12; i++) {
+            const bucketStart = start + span * i;
+            const bucketEnd = i === 11 ? end : start + span * (i + 1);
+            chartBuckets.push(
+              bucket(bucketStart, bucketEnd, shortDateLabel(bucketStart)),
+            );
+          }
+        }
+      }
     }
-    const maxMinutes = Math.max(60, ...week.map((d) => d.minutes));
+    const maxMinutes = Math.max(60, ...chartBuckets.map((d) => d.minutes));
 
     // Streak (consecutive days with at least 1 work session, ending today or yesterday)
     let streak = 0;
@@ -103,13 +176,13 @@ export default function StatsScreen() {
     return {
       todayCount,
       todayMinutes,
-      week,
+      chartBuckets,
       maxMinutes,
       streak,
       allTimeCount: allTime.count,
       allTimeMinutes: Math.round(allTime.ms / 60000),
     };
-  }, [stats, settings.dailyGoal, settings.workMinutes]);
+  }, [period, stats, settings.dailyGoal, settings.workMinutes]);
 
   const lineChart = useMemo(() => {
     const width = 640;
@@ -121,8 +194,8 @@ export default function StatsScreen() {
     const rightInset = 16;
     const plotWidth = width - leftInset - rightInset;
     const plotHeight = height - topInset - bottomInset;
-    const chartWidth = Math.max(1, data.week.length - 1);
-    const points = data.week.map((d, i) => {
+    const chartWidth = Math.max(1, data.chartBuckets.length - 1);
+    const points = data.chartBuckets.map((d, i) => {
       const ratio = data.maxMinutes
         ? Math.min(1, Math.max(0, d.minutes / data.maxMinutes))
         : 0;
@@ -133,7 +206,7 @@ export default function StatsScreen() {
       };
     });
     return { width, height, labelHeight, points };
-  }, [data.week, data.maxMinutes]);
+  }, [data.chartBuckets, data.maxMinutes]);
 
   const periodCutoff = useMemo(() => {
     const now = Date.now();
@@ -160,6 +233,14 @@ export default function StatsScreen() {
   }, [period]);
   const recent = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visibleCount;
+  const periodTitle =
+    period === "today"
+      ? t("stats.periodToday")
+      : period === "week"
+        ? t("stats.periodWeek")
+        : period === "month"
+          ? t("stats.periodMonth")
+          : t("stats.periodAll");
 
   const goalProgress =
     settings.dailyGoal > 0
@@ -385,7 +466,7 @@ export default function StatsScreen() {
         ]}
       >
         <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-          {t("stats.thisWeek")}
+          {periodTitle}
         </Text>
         <View style={styles.chart}>
           <Svg
@@ -425,7 +506,8 @@ export default function StatsScreen() {
               );
             })}
             {lineChart.points.map((d, i) => {
-              const isToday = i === data.week.length - 1;
+              const isToday =
+                period !== "all" && i === data.chartBuckets.length - 1;
               const pointColor =
                 isToday || d.goalMet ? colors.primary : colors.accent;
               const pointOpacity = !isToday && !d.goalMet ? 0.55 : 1;

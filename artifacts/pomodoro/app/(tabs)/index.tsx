@@ -89,6 +89,7 @@ export default function TimerScreen() {
   const pulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    pulse.stopAnimation();
     if (!timer.isRunning) {
       pulse.setValue(1);
       return;
@@ -164,13 +165,17 @@ export default function TimerScreen() {
           timer.pausedRemainingMs < timer.totalMs
         ? t("timer.paused")
         : t("timer.ready");
+  const isConstrainedWide = layout.isSplitLandscape || height < 620;
   const circleSize = Math.min(
-    layout.isWide ? 300 : layout.isTablet ? 340 : 300,
+    layout.isWide ? 300 : layout.isTablet ? 320 : 300,
     width - 64,
-    height - (layout.isWide ? 220 : 300),
+    height - (layout.isWide ? 220 : isConstrainedWide ? 250 : 300),
   );
-  const timerSize = Math.max(layout.isWide ? 220 : 240, circleSize);
-  const isConstrainedWide = layout.isWide && height < 620;
+  const timerSize = Math.max(
+    isConstrainedWide ? 180 : layout.isWide ? 220 : 240,
+    circleSize,
+  );
+  const compactTimerContent = timerSize < 240;
 
   return (
     <View
@@ -259,13 +264,20 @@ export default function TimerScreen() {
                 })}
                 style={[
                   styles.sessionPill,
+                  compactTimerContent ? styles.sessionPillCompact : null,
                   { backgroundColor: sessionColor + "22", borderColor: sessionColor },
                 ]}
               >
                 <View
                   style={[styles.sessionPillDot, { backgroundColor: sessionColor }]}
                 />
-                <Text style={[styles.sessionLabel, { color: sessionColor }]}>
+                <Text
+                  style={[
+                    styles.sessionLabel,
+                    compactTimerContent ? styles.sessionLabelCompact : null,
+                    { color: sessionColor },
+                  ]}
+                >
                   {sessionLabels[timer.sessionType]}
                 </Text>
               </Pressable>
@@ -285,7 +297,7 @@ export default function TimerScreen() {
               <Animated.View style={{ transform: [{ scale: pulse }] }}>
                 <CircularProgress
                   size={timerSize}
-                  strokeWidth={layout.isTablet ? 16 : 14}
+                  strokeWidth={compactTimerContent ? 10 : layout.isTablet ? 16 : 14}
                   progress={progress}
                   color={endingSoon ? colors.destructive : sessionColor}
                   trackColor={colors.ringTrack}
@@ -295,19 +307,34 @@ export default function TimerScreen() {
                       styles.time,
                       {
                         color: colors.foreground,
-                        fontSize: layout.isWide ? 58 : layout.isTablet ? 72 : 64,
+                        fontSize: compactTimerContent
+                          ? 44
+                          : layout.isWide
+                            ? 58
+                            : layout.isTablet
+                              ? 72
+                              : 64,
                       },
                     ]}
                   >
                     {formatTime(displayTime)}
                   </Text>
                   <Text
-                    style={[styles.timeSubtitle, { color: colors.mutedForeground }]}
+                    style={[
+                      styles.timeSubtitle,
+                      compactTimerContent ? styles.timeSubtitleCompact : null,
+                      { color: colors.mutedForeground },
+                    ]}
+                    numberOfLines={1}
                   >
                     {timerStatus}
                   </Text>
                   <Text
-                    style={[styles.nextLabel, { color: colors.mutedForeground }]}
+                    style={[
+                      styles.nextLabel,
+                      compactTimerContent ? styles.nextLabelCompact : null,
+                      { color: colors.mutedForeground },
+                    ]}
                     numberOfLines={1}
                   >
                     {isStopwatch
@@ -459,6 +486,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
   },
+  sessionPillCompact: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
   sessionPillDot: {
     width: 6,
     height: 6,
@@ -469,11 +500,14 @@ const styles = StyleSheet.create({
     fontFamily: "Inter_600SemiBold",
     letterSpacing: 0.3,
   },
+  sessionLabelCompact: {
+    fontSize: 11,
+  },
   timerWrap: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 340,
+    minHeight: 220,
   },
   timerGrid: {
     flex: 1,
@@ -503,11 +537,21 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginTop: 4,
   },
+  timeSubtitleCompact: {
+    fontSize: 10,
+    letterSpacing: 0.8,
+    marginTop: 2,
+  },
   nextLabel: {
     fontSize: 11,
     fontFamily: "Inter_500Medium",
     marginTop: 8,
     opacity: 0.85,
+  },
+  nextLabelCompact: {
+    fontSize: 9,
+    marginTop: 4,
+    maxWidth: 150,
   },
   taskRow: {
     flexDirection: "row",

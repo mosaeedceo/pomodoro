@@ -46,7 +46,14 @@ export function PillNotification() {
     segments[0] === "(tabs)" &&
     (segments.length < 2 || segments[1] === "index");
 
-  const isVisible = timer.isRunning && !isOnTimerTab;
+  const sessionInProgress =
+    timer.isRunning ||
+    (isStopwatch
+      ? (timer.pausedRemainingMs ?? 0) > 0
+      : timer.pausedRemainingMs != null &&
+        timer.pausedRemainingMs > 0 &&
+        timer.pausedRemainingMs < timer.totalMs);
+  const isVisible = sessionInProgress && !isOnTimerTab;
 
   useEffect(() => {
     Animated.parallel([
