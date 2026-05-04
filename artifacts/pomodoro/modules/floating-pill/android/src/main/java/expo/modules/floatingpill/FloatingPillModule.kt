@@ -16,7 +16,11 @@ class FloatingPillModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("FloatingPill")
 
-    Events(FloatingPillEvents.EVENT_TOGGLE, FloatingPillEvents.EVENT_OPEN)
+    Events(
+      FloatingPillEvents.EVENT_TOGGLE,
+      FloatingPillEvents.EVENT_OPEN,
+      FloatingPillEvents.EVENT_COMPLETE,
+    )
 
     OnStartObserving {
       registerReceiver()
@@ -110,12 +114,14 @@ class FloatingPillModule : Module() {
         when (intent.action) {
           FloatingPillEvents.ACTION_TOGGLE -> sendEvent(FloatingPillEvents.EVENT_TOGGLE)
           FloatingPillEvents.ACTION_OPEN -> sendEvent(FloatingPillEvents.EVENT_OPEN)
+          FloatingPillEvents.ACTION_COMPLETE -> sendEvent(FloatingPillEvents.EVENT_COMPLETE)
         }
       }
     }
     val filter = IntentFilter().apply {
       addAction(FloatingPillEvents.ACTION_TOGGLE)
       addAction(FloatingPillEvents.ACTION_OPEN)
+      addAction(FloatingPillEvents.ACTION_COMPLETE)
     }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
       context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)

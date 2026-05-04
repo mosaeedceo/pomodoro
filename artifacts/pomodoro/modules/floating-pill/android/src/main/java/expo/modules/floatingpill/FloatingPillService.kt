@@ -48,7 +48,11 @@ class FloatingPillService : Service() {
         currentState = updated
         updatePill(updated)
         startForeground(NOTIFICATION_ID, buildNotification(updated))
-        handler.postDelayed(this, 1000L)
+        if (updated.mode != "stopwatch" && updated.endAt > 0L && System.currentTimeMillis() >= updated.endAt) {
+          sendBroadcast(Intent(FloatingPillEvents.ACTION_COMPLETE).setPackage(packageName))
+        } else {
+          handler.postDelayed(this, nextTickDelay())
+        }
       }
     }
   }
@@ -324,8 +328,13 @@ class FloatingPillService : Service() {
   private fun scheduleTick(state: FloatingPillState) {
     handler.removeCallbacks(tickRunnable)
     if (state.running && (state.endAt > 0L || state.mode == "stopwatch")) {
-      handler.postDelayed(tickRunnable, 1000L)
+      handler.postDelayed(tickRunnable, nextTickDelay())
     }
+  }
+
+  private fun nextTickDelay(): Long {
+    val now = System.currentTimeMillis()
+    return 1000L - (now % 1000L)
   }
 
   private fun formatDisplayTime(state: FloatingPillState): String {
