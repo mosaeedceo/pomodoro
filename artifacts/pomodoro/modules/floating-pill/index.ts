@@ -8,6 +8,12 @@ export interface FloatingPillState {
   task: string;
   running: boolean;
   color: string;
+  endAt?: number;
+  totalMs?: number;
+  shape?: "classic" | "rounded" | "square" | "compact";
+  mode?: "pomodoro" | "stopwatch";
+  startedAt?: number;
+  elapsedMs?: number;
 }
 
 export type FloatingPillEvent = "onToggle" | "onOpen";

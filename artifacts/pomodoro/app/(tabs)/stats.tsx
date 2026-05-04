@@ -17,6 +17,7 @@ import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { dayLabel, formatMinutes, startOfDay } from "@/lib/format";
+import { createTranslator } from "@/lib/i18n";
 
 type Period = "today" | "week" | "month" | "all";
 
@@ -33,6 +34,10 @@ export default function StatsScreen() {
     exportStats,
     setTaskLabel,
   } = useApp();
+  const t = React.useMemo(
+    () => createTranslator(settings.language),
+    [settings.language],
+  );
   const [period, setPeriod] = useState<Period>("week");
 
   const data = useMemo(() => {
@@ -105,6 +110,21 @@ export default function StatsScreen() {
     };
   }, [stats, settings.dailyGoal, settings.workMinutes]);
 
+  const linePoints = useMemo(() => {
+    const chartWidth = Math.max(1, data.week.length - 1);
+    return data.week.map((d, i) => {
+      const x = (i / chartWidth) * 100;
+      const y = data.maxMinutes
+        ? 100 - (d.minutes / data.maxMinutes) * 100
+        : 100;
+      return {
+        ...d,
+        x,
+        y: Math.min(100, Math.max(0, y)),
+      };
+    });
+  }, [data.week, data.maxMinutes]);
+
   const periodCutoff = useMemo(() => {
     const now = Date.now();
     switch (period) {
@@ -155,12 +175,12 @@ export default function StatsScreen() {
       return;
     }
     Alert.alert(
-      "Clear all stats?",
-      "This permanently deletes every recorded session.",
+      t("stats.clearTitle"),
+      t("stats.clearMessage"),
       [
-        { text: "Cancel", style: "cancel" },
-        { text: "Clear all", style: "destructive", onPress: clearStats },
-        { text: "Clear today only", onPress: clearTodayStats },
+        { text: t("common.cancel"), style: "cancel" },
+        { text: t("stats.clearAll"), style: "destructive", onPress: clearStats },
+        { text: t("stats.clearToday"), onPress: clearTodayStats },
       ],
     );
   };
@@ -181,14 +201,16 @@ export default function StatsScreen() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.headerRow}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Stats</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>
+          {t("stats.title")}
+        </Text>
         <View style={styles.headerActions}>
           {stats.length > 0 ? (
             <Pressable
               onPress={exportStats}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Export stats"
+              accessibilityLabel={t("stats.exportA11y")}
               style={({ pressed }) => ({ opacity: pressed ? 0.5 : 0.8 })}
             >
               <Feather
@@ -203,7 +225,7 @@ export default function StatsScreen() {
               onPress={handleClear}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Clear stats"
+              accessibilityLabel={t("stats.clearA11y")}
               style={({ pressed }) => ({ opacity: pressed ? 0.5 : 0.8 })}
             >
               <Feather
@@ -225,7 +247,7 @@ export default function StatsScreen() {
       >
         <View style={{ flex: 1 }}>
           <Text style={[styles.todayLabel, { color: colors.primaryForeground }]}>
-            Today
+            {t("stats.today")}
           </Text>
           <View style={styles.todayMain}>
             <Text
@@ -236,7 +258,7 @@ export default function StatsScreen() {
             <Text
               style={[styles.todayUnit, { color: colors.primaryForeground }]}
             >
-              of {settings.dailyGoal} goal
+              {t("stats.goal", { goal: settings.dailyGoal })}
             </Text>
           </View>
           <View style={styles.todayMetaRow}>
@@ -253,7 +275,13 @@ export default function StatsScreen() {
                   { color: colors.primaryForeground },
                 ]}
               >
-                {formatMinutes(data.todayMinutes)} focused
+                {t("stats.focused", {
+                  minutes: formatMinutes(
+                    data.todayMinutes,
+                    t("settings.minutesShortUnit"),
+                    t("settings.hoursShortUnit"),
+                  ),
+                })}
               </Text>
             </View>
             <View style={styles.todayMeta}>
@@ -269,7 +297,7 @@ export default function StatsScreen() {
                   { color: colors.primaryForeground },
                 ]}
               >
-                {data.streak} day streak
+                {t("stats.dayStreak", { count: data.streak })}
               </Text>
             </View>
           </View>
@@ -326,12 +354,12 @@ export default function StatsScreen() {
                 ]}
               >
                 {p === "today"
-                  ? "Today"
+                  ? t("stats.periodToday")
                   : p === "week"
-                    ? "Week"
+                    ? t("stats.periodWeek")
                     : p === "month"
-                      ? "Month"
-                      : "All"}
+                      ? t("stats.periodMonth")
+                      : t("stats.periodAll")}
               </Text>
             </Pressable>
           );
@@ -346,35 +374,74 @@ export default function StatsScreen() {
         ]}
       >
         <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-          This week
+          {t("stats.thisWeek")}
         </Text>
         <View style={styles.chart}>
-          {data.week.map((d, i) => {
-            const heightPct = data.maxMinutes
-              ? (d.minutes / data.maxMinutes) * 100
-              : 0;
-            const isToday = i === data.week.length - 1;
-            const barColor = isToday
-              ? colors.primary
-              : d.goalMet
+          <View style={styles.linePlot}>
+            <View
+              style={[
+                styles.lineBase,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.primary + "14",
+                },
+              ]}
+            />
+            {linePoints.slice(0, -1).map((point, i) => {
+              const next = linePoints[i + 1];
+              const dx = next.x - point.x;
+              const dy = next.y - point.y;
+              const length = Math.sqrt(dx * dx + dy * dy);
+              const angle = Math.atan2(dy, dx);
+              return (
+                <View
+                  key={`line-${i}`}
+                  style={[
+                    styles.lineSegment,
+                    {
+                      left: `${point.x}%`,
+                      top: `${point.y}%`,
+                      width: `${length}%`,
+                      backgroundColor: colors.primary,
+                      transform: [{ rotate: `${angle}rad` }],
+                    },
+                  ]}
+                />
+              );
+            })}
+            {linePoints.map((d, i) => {
+              const isToday = i === data.week.length - 1;
+              const pointColor = isToday
                 ? colors.primary
-                : colors.accent;
-            const barOpacity = !isToday && !d.goalMet ? 0.5 : 1;
-            return (
-              <View key={i} style={styles.chartCol}>
-                <View style={styles.chartBarWrap}>
-                  <View
-                    style={[
-                      styles.chartBar,
-                      {
-                        backgroundColor: barColor,
-                        opacity: barOpacity,
-                        height: `${Math.max(heightPct, 3)}%`,
-                      },
-                    ]}
-                  />
+                : d.goalMet
+                  ? colors.primary
+                  : colors.accent;
+              const pointOpacity = !isToday && !d.goalMet ? 0.55 : 1;
+              return (
+                <View
+                  key={`point-${i}`}
+                  style={[
+                    styles.linePoint,
+                    {
+                      left: `${d.x}%`,
+                      top: `${d.y}%`,
+                      backgroundColor: pointColor,
+                      borderColor: colors.card,
+                      opacity: pointOpacity,
+                    },
+                  ]}
+                >
+                  <Text style={styles.linePointValue}>{d.minutes}</Text>
                 </View>
+              );
+            })}
+          </View>
+          <View style={styles.chartLabels}>
+            {data.week.map((d, i) => {
+              const isToday = i === data.week.length - 1;
+              return (
                 <Text
+                  key={i}
                   style={[
                     styles.chartLabel,
                     {
@@ -389,9 +456,9 @@ export default function StatsScreen() {
                 >
                   {d.label}
                 </Text>
-              </View>
-            );
-          })}
+              );
+            })}
+          </View>
         </View>
       </View>
 
@@ -404,7 +471,7 @@ export default function StatsScreen() {
           ]}
         >
           <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-            Total sessions
+            {t("stats.totalSessions")}
           </Text>
           <Text style={[styles.statValue, { color: colors.foreground }]}>
             {data.allTimeCount}
@@ -417,10 +484,14 @@ export default function StatsScreen() {
           ]}
         >
           <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
-            Total focus
+            {t("stats.totalFocus")}
           </Text>
           <Text style={[styles.statValue, { color: colors.foreground }]}>
-            {formatMinutes(data.allTimeMinutes)}
+            {formatMinutes(
+              data.allTimeMinutes,
+              t("settings.minutesShortUnit"),
+              t("settings.hoursShortUnit"),
+            )}
           </Text>
         </View>
       </View>
@@ -433,7 +504,7 @@ export default function StatsScreen() {
         ]}
       >
         <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-          Recent ({period})
+          {t("stats.recent", { period })}
         </Text>
         {recent.length === 0 ? (
           <View style={styles.empty}>
@@ -445,8 +516,8 @@ export default function StatsScreen() {
             />
             <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
               {period === "today"
-                ? "No sessions today yet — start a focus"
-                : "No sessions in this period"}
+                ? t("stats.noSessionsToday")
+                : t("stats.noSessionsPeriod")}
             </Text>
             <Pressable
               onPress={() => goTo("index")}
@@ -455,10 +526,10 @@ export default function StatsScreen() {
                 { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
               ]}
               accessibilityRole="button"
-              accessibilityLabel="Open timer"
+              accessibilityLabel={t("stats.openTimer")}
             >
               <Text style={[styles.emptyCtaText, { color: colors.primaryForeground }]}>
-                Open timer
+                {t("stats.openTimer")}
               </Text>
             </Pressable>
           </View>
@@ -478,10 +549,10 @@ export default function StatsScreen() {
             const title =
               s.taskLabel ||
               (s.type === "work"
-                ? "Focus"
+                ? t("session.work")
                 : s.type === "shortBreak"
-                  ? "Short Break"
-                  : "Long Break");
+                  ? t("session.shortBreak")
+                  : t("session.longBreak"));
             return (
               <View
                 key={s.id}
@@ -509,14 +580,15 @@ export default function StatsScreen() {
                       { color: colors.mutedForeground },
                     ]}
                   >
-                    {time} • {Math.round(s.durationMs / 60000)}m
+                    {time} • {Math.round(s.durationMs / 60000)}
+                    {t("settings.minutesShortUnit")}
                   </Text>
                 </View>
                 {s.type === "work" && s.taskLabel ? (
                   <Pressable
                     onPress={() => handleResume(s.taskLabel)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Resume task ${s.taskLabel}`}
+                    accessibilityLabel={`${t("stats.resumeTask")} ${s.taskLabel}`}
                     hitSlop={8}
                     style={({ pressed }) => [
                       styles.resumeBtn,
@@ -534,7 +606,7 @@ export default function StatsScreen() {
                     <Text
                       style={[styles.resumeText, { color: colors.foreground }]}
                     >
-                      Resume
+                      {t("timer.resume")}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -546,7 +618,7 @@ export default function StatsScreen() {
           <Pressable
             onPress={() => setVisibleCount((n) => n + PAGE_SIZE)}
             accessibilityRole="button"
-            accessibilityLabel="Show more sessions"
+            accessibilityLabel={t("stats.showMore", { count: filtered.length - visibleCount })}
             style={({ pressed }) => [
               styles.showMore,
               {
@@ -556,7 +628,7 @@ export default function StatsScreen() {
             ]}
           >
             <Text style={[styles.showMoreText, { color: colors.primary }]}>
-              Show more ({filtered.length - visibleCount} more)
+              {t("stats.showMore", { count: filtered.length - visibleCount })}
             </Text>
           </Pressable>
         ) : null}
@@ -577,7 +649,7 @@ export default function StatsScreen() {
         >
           <Feather name="target" size={16} color={colors.primary} />
           <Text style={[styles.goalCtaText, { color: colors.foreground }]}>
-            Set a daily goal
+            {t("stats.setDailyGoal")}
           </Text>
           <Feather
             name="chevron-right"
@@ -697,26 +769,49 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   chart: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    height: 140,
-    gap: 8,
+    height: 158,
+    gap: 12,
   },
-  chartCol: {
+  linePlot: {
     flex: 1,
+    marginHorizontal: 8,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  lineBase: {
+    ...StyleSheet.absoluteFillObject,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderRadius: 14,
+  },
+  lineSegment: {
+    position: "absolute",
+    height: 3,
+    borderRadius: 999,
+    transformOrigin: "left center",
+  },
+  linePoint: {
+    position: "absolute",
+    width: 18,
+    height: 18,
+    marginLeft: -9,
+    marginTop: -9,
+    borderRadius: 9,
+    borderWidth: 3,
     alignItems: "center",
-    height: "100%",
+    justifyContent: "center",
   },
-  chartBarWrap: {
-    flex: 1,
-    width: "100%",
-    justifyContent: "flex-end",
-    paddingBottom: 8,
+  linePointValue: {
+    position: "absolute",
+    top: -22,
+    minWidth: 28,
+    textAlign: "center",
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    color: "#ffffff",
   },
-  chartBar: {
-    width: "100%",
-    borderRadius: 8,
-    minHeight: 4,
+  chartLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   chartLabel: {
     fontSize: 11,

@@ -12,4 +12,10 @@ object FloatingPillEvents {
   const val EXTRA_TASK = "task"
   const val EXTRA_RUNNING = "running"
   const val EXTRA_COLOR = "color"
+  const val EXTRA_END_AT = "endAt"
+  const val EXTRA_TOTAL_MS = "totalMs"
+  const val EXTRA_SHAPE = "shape"
+  const val EXTRA_MODE = "mode"
+  const val EXTRA_STARTED_AT = "startedAt"
+  const val EXTRA_ELAPSED_MS = "elapsedMs"
 }

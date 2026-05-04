@@ -9,7 +9,9 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
@@ -26,12 +28,28 @@ class FloatingPillService : Service() {
   private var labelView: TextView? = null
   private var timeView: TextView? = null
   private var taskView: TextView? = null
+  private var textColView: LinearLayout? = null
   private var toggleView: TextView? = null
+  private var dotView: View? = null
+  private val handler = Handler(Looper.getMainLooper())
+  private var currentState: FloatingPillState? = null
   private var downRawX = 0f
   private var downRawY = 0f
   private var downX = 0
   private var downY = 0
   private var moved = false
+  private val tickRunnable = object : Runnable {
+    override fun run() {
+      val state = currentState ?: return
+      if (state.running) {
+        val updated = state.copy(time = formatDisplayTime(state))
+        currentState = updated
+        updatePill(updated)
+        startForeground(NOTIFICATION_ID, buildNotification(updated))
+        handler.postDelayed(this, 1000L)
+      }
+    }
+  }
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -57,14 +75,23 @@ class FloatingPillService : Service() {
       task = intent?.getStringExtra(FloatingPillEvents.EXTRA_TASK).orEmpty(),
       running = intent?.getBooleanExtra(FloatingPillEvents.EXTRA_RUNNING, false) ?: false,
       color = parseColor(intent?.getStringExtra(FloatingPillEvents.EXTRA_COLOR)),
+      endAt = intent?.getLongExtra(FloatingPillEvents.EXTRA_END_AT, 0L) ?: 0L,
+      totalMs = intent?.getLongExtra(FloatingPillEvents.EXTRA_TOTAL_MS, 0L) ?: 0L,
+      shape = intent?.getStringExtra(FloatingPillEvents.EXTRA_SHAPE).orEmpty().ifBlank { "classic" },
+      mode = intent?.getStringExtra(FloatingPillEvents.EXTRA_MODE).orEmpty().ifBlank { "pomodoro" },
+      startedAt = intent?.getLongExtra(FloatingPillEvents.EXTRA_STARTED_AT, 0L) ?: 0L,
+      elapsedMs = intent?.getLongExtra(FloatingPillEvents.EXTRA_ELAPSED_MS, 0L) ?: 0L,
     )
 
+    currentState = state
     startForeground(NOTIFICATION_ID, buildNotification(state))
     if (pillView == null) addPill(state) else updatePill(state)
+    scheduleTick(state)
     return START_STICKY
   }
 
   override fun onDestroy() {
+    handler.removeCallbacks(tickRunnable)
     hideView()
     super.onDestroy()
   }
@@ -98,21 +125,27 @@ class FloatingPillService : Service() {
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER_VERTICAL
-      setPadding(18.dp, 10.dp, 10.dp, 10.dp)
-      background = PillDrawable()
+      setPadding(
+        if (state.shape == "compact") 14.dp else 18.dp,
+        if (state.shape == "compact") 8.dp else 10.dp,
+        if (state.shape == "compact") 6.dp else 10.dp,
+        if (state.shape == "compact") 8.dp else 10.dp,
+      )
+      background = PillDrawable(state.shape)
       elevation = 10.dp.toFloat()
     }
 
-    val dot = View(this).apply {
+    dotView = View(this).apply {
       background = DotDrawable(state.color)
     }
-    root.addView(dot, LinearLayout.LayoutParams(10.dp, 10.dp).apply {
+    root.addView(dotView, LinearLayout.LayoutParams(10.dp, 10.dp).apply {
       marginEnd = 10.dp
     })
 
     val textCol = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
     }
+    textColView = textCol
     labelView = TextView(this).apply {
       textSize = 11f
       setTextColor(Color.parseColor("#8d7d78"))
@@ -135,10 +168,18 @@ class FloatingPillService : Service() {
     textCol.addView(labelView)
     textCol.addView(timeView)
     textCol.addView(taskView)
-    root.addView(textCol, LinearLayout.LayoutParams(150.dp, LinearLayout.LayoutParams.WRAP_CONTENT))
+    root.addView(
+      textCol,
+      LinearLayout.LayoutParams(
+        if (state.shape == "compact") LinearLayout.LayoutParams.WRAP_CONTENT else 150.dp,
+        LinearLayout.LayoutParams.WRAP_CONTENT,
+      ).apply {
+        marginEnd = if (state.shape == "compact") 6.dp else 0
+      },
+    )
 
     toggleView = TextView(this).apply {
-      textSize = 18f
+      textSize = if (state.shape == "compact") 16f else 18f
       gravity = Gravity.CENTER
       setTextColor(Color.WHITE)
       background = CircleDrawable(state.color)
@@ -147,7 +188,13 @@ class FloatingPillService : Service() {
         sendBroadcast(Intent(FloatingPillEvents.ACTION_TOGGLE).setPackage(packageName))
       }
     }
-    root.addView(toggleView, LinearLayout.LayoutParams(38.dp, 38.dp))
+    root.addView(
+      toggleView,
+      LinearLayout.LayoutParams(
+        if (state.shape == "compact") 32.dp else 38.dp,
+        if (state.shape == "compact") 32.dp else 38.dp,
+      ),
+    )
 
     root.setOnClickListener {
       sendBroadcast(Intent(FloatingPillEvents.ACTION_OPEN).setPackage(packageName))
@@ -162,11 +209,26 @@ class FloatingPillService : Service() {
   }
 
   private fun updatePill(state: FloatingPillState) {
+    val root = pillView as? LinearLayout
+    root?.background = PillDrawable(state.shape)
     labelView?.text = state.label
     timeView?.text = state.time
     taskView?.text = state.task
     taskView?.visibility = if (state.task.isBlank()) View.GONE else View.VISIBLE
     toggleView?.text = if (state.running) "Ⅱ" else "▶"
+    dotView?.background = DotDrawable(state.color)
+    toggleView?.background = CircleDrawable(state.color)
+    textColView?.layoutParams = textColView?.layoutParams?.apply {
+      if (this is LinearLayout.LayoutParams) {
+        width = if (state.shape == "compact") LinearLayout.LayoutParams.WRAP_CONTENT else 150.dp
+        marginEnd = if (state.shape == "compact") 6.dp else 0
+      }
+    }
+    toggleView?.layoutParams = toggleView?.layoutParams?.apply {
+      width = if (state.shape == "compact") 32.dp else 38.dp
+      height = if (state.shape == "compact") 32.dp else 38.dp
+    }
+    toggleView?.textSize = if (state.shape == "compact") 16f else 18f
   }
 
   private fun handleTouch(view: View, event: MotionEvent): Boolean {
@@ -195,6 +257,8 @@ class FloatingPillService : Service() {
   }
 
   private fun hide() {
+    handler.removeCallbacks(tickRunnable)
+    currentState = null
     hideView()
     stopForeground(STOP_FOREGROUND_REMOVE)
     stopSelf()
@@ -244,6 +308,35 @@ class FloatingPillService : Service() {
     return runCatching { Color.parseColor(value ?: "#c8442a") }.getOrDefault(Color.parseColor("#c8442a"))
   }
 
+  private fun scheduleTick(state: FloatingPillState) {
+    handler.removeCallbacks(tickRunnable)
+    if (state.running && (state.endAt > 0L || state.mode == "stopwatch")) {
+      handler.postDelayed(tickRunnable, 1000L)
+    }
+  }
+
+  private fun formatDisplayTime(state: FloatingPillState): String {
+    return if (state.mode == "stopwatch") {
+      formatElapsed(System.currentTimeMillis() - state.startedAt + state.elapsedMs)
+    } else {
+      formatRemaining(state.endAt - System.currentTimeMillis())
+    }
+  }
+
+  private fun formatRemaining(remainingMs: Long): String {
+    val totalSeconds = kotlin.math.max(0L, (remainingMs + 999L) / 1000L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+  }
+
+  private fun formatElapsed(elapsedMs: Long): String {
+    val totalSeconds = kotlin.math.max(0L, elapsedMs / 1000L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
+  }
+
   private val Int.dp: Int
     get() = (this * resources.displayMetrics.density).toInt()
 
@@ -253,6 +346,12 @@ class FloatingPillService : Service() {
     val task: String,
     val running: Boolean,
     val color: Int,
+    val endAt: Long,
+    val totalMs: Long,
+    val shape: String,
+    val mode: String,
+    val startedAt: Long,
+    val elapsedMs: Long,
   )
 
   companion object {

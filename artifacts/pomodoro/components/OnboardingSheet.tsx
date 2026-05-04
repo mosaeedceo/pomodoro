@@ -11,29 +11,33 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
-
-const ROWS: { icon: keyof typeof Feather.glyphMap; title: string; body: string }[] = [
-  {
-    icon: "clock",
-    title: "Focus, then break",
-    body: "Run a 25-minute focus, then a short break. After 4 rounds you get a long break.",
-  },
-  {
-    icon: "bell",
-    title: "Live pill notification",
-    body: "While a session runs, a sticky notification keeps the countdown visible from anywhere.",
-  },
-  {
-    icon: "bar-chart-2",
-    title: "Track your progress",
-    body: "Stats remembers every session so you can see your streak and weekly trend.",
-  },
-];
+import { createTranslator } from "@/lib/i18n";
 
 export function OnboardingSheet() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { settings, setSettings, loaded } = useApp();
+  const t = React.useMemo(
+    () => createTranslator(settings.language),
+    [settings.language],
+  );
+  const rows: { icon: keyof typeof Feather.glyphMap; title: string; body: string }[] = [
+    {
+      icon: "clock",
+      title: t("onboarding.row1Title"),
+      body: t("onboarding.row1Body"),
+    },
+    {
+      icon: "bell",
+      title: t("onboarding.row2Title"),
+      body: t("onboarding.row2Body"),
+    },
+    {
+      icon: "bar-chart-2",
+      title: t("onboarding.row3Title"),
+      body: t("onboarding.row3Body"),
+    },
+  ];
 
   const visible = loaded && !settings.onboardingCompleted;
 
@@ -59,13 +63,13 @@ export function OnboardingSheet() {
             style={[styles.handle, { backgroundColor: colors.border }]}
           />
           <Text style={[styles.title, { color: colors.foreground }]}>
-            Welcome to Pomodoro
+            {t("onboarding.title")}
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            Three things to know before you start.
+            {t("onboarding.subtitle")}
           </Text>
           <View style={styles.rows}>
-            {ROWS.map((r) => (
+            {rows.map((r) => (
               <View key={r.title} style={styles.row}>
                 <View
                   style={[
@@ -96,7 +100,7 @@ export function OnboardingSheet() {
           <Pressable
             onPress={() => setSettings({ onboardingCompleted: true })}
             accessibilityRole="button"
-            accessibilityLabel="Get started"
+            accessibilityLabel={t("onboarding.getStarted")}
             style={({ pressed }) => [
               styles.cta,
               {
@@ -106,7 +110,7 @@ export function OnboardingSheet() {
             ]}
           >
             <Text style={[styles.ctaText, { color: colors.primaryForeground }]}>
-              Get started
+              {t("onboarding.getStarted")}
             </Text>
           </Pressable>
         </View>

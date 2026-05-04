@@ -10,14 +10,26 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, Platform, Share, Vibration } from "react-native";
+import {
+  AppState,
+  I18nManager,
+  Platform,
+  Share,
+  Vibration,
+} from "react-native";
 
 import type { AccentName, ThemeName } from "@/constants/colors";
 import { playAlarmSound } from "@/lib/alarmPlayer";
 import { DEFAULT_ALARM_SOUND, type AlarmSoundName } from "@/lib/alarmSounds";
+import {
+  createTranslator,
+  isRtlLanguage,
+  type LanguageCode,
+} from "@/lib/i18n";
 import { FloatingPill } from "floating-pill";
 
 export type SessionType = "work" | "shortBreak" | "longBreak";
+export type TimerMode = "pomodoro" | "stopwatch";
 
 export interface Settings {
   workMinutes: number;
@@ -34,7 +46,11 @@ export interface Settings {
   alarmSound: AlarmSoundName;
   alarmVolume: number;
   themeName: ThemeName;
+  colorScheme: "system" | "light" | "dark";
   accentName: AccentName;
+  language: LanguageCode;
+  pillShape: FloatingPillShape;
+  timerMode: TimerMode;
   dailyGoal: number;
   quietHoursEnabled: boolean;
   quietHoursStart: number;
@@ -57,7 +73,11 @@ export const DEFAULT_SETTINGS: Settings = {
   alarmSound: DEFAULT_ALARM_SOUND,
   alarmVolume: 0.8,
   themeName: "crimson",
+  colorScheme: "system",
   accentName: "default",
+  language: "en",
+  pillShape: "classic",
+  timerMode: "pomodoro",
   dailyGoal: 6,
   quietHoursEnabled: false,
   quietHoursStart: 22 * 60,
@@ -110,6 +130,8 @@ const NOTIFICATION_END_QUIET_CHANNEL_ID = "pomodoro-alerts-quiet";
 const PILL_NOTIFICATION_ID = "pomodoro-pill-active";
 const SCHEDULED_END_ID = "pomodoro-end-scheduled";
 
+export type FloatingPillShape = "classic" | "rounded" | "square" | "compact";
+
 interface AppContextValue {
   settings: Settings;
   setSettings: (updater: Partial<Settings>) => void;
@@ -117,6 +139,7 @@ interface AppContextValue {
   applyPreset: (preset: Partial<Settings>) => void;
   timer: TimerState;
   remainingMs: number;
+  elapsedMs: number;
   start: () => void;
   pause: () => void;
   reset: () => void;
@@ -156,6 +179,10 @@ function nextSessionType(
   return "work";
 }
 
+function isStopwatchMode(settings: Settings): boolean {
+  return settings.timerMode === "stopwatch";
+}
+
 function makeId(): string {
   return Date.now().toString() + Math.random().toString(36).slice(2, 9);
 }
@@ -188,7 +215,7 @@ async function configureNotifications() {
       await Notifications.setNotificationChannelAsync(
         NOTIFICATION_CHANNEL_ID,
         {
-          name: "Pomodoro Timer Pill",
+          name: "Pomodoro",
           importance: Notifications.AndroidImportance.LOW,
           vibrationPattern: [0],
           enableVibrate: false,
@@ -200,7 +227,7 @@ async function configureNotifications() {
       await Notifications.setNotificationChannelAsync(
         NOTIFICATION_END_CHANNEL_ID,
         {
-          name: "Session Alerts",
+          name: "Pomodoro Alerts",
           importance: Notifications.AndroidImportance.HIGH,
           vibrationPattern: [0, 250, 250, 250],
           enableVibrate: true,
@@ -209,7 +236,7 @@ async function configureNotifications() {
       await Notifications.setNotificationChannelAsync(
         NOTIFICATION_END_QUIET_CHANNEL_ID,
         {
-          name: "Session Alerts (quiet hours)",
+          name: "Pomodoro Alerts (quiet)",
           importance: Notifications.AndroidImportance.LOW,
           vibrationPattern: [0],
           enableVibrate: false,
@@ -222,32 +249,39 @@ async function configureNotifications() {
   }
 }
 
-const sessionLabel = (type: SessionType): string => {
+export const sessionLabel = (
+  type: SessionType,
+  language: LanguageCode = "en",
+): string => {
+  const t = createTranslator(language);
   switch (type) {
     case "work":
-      return "Focus";
+      return t("session.work");
     case "shortBreak":
-      return "Short Break";
+      return t("session.shortBreak");
     case "longBreak":
-      return "Long Break";
+      return t("session.longBreak");
   }
 };
 
 async function showPillNotification(
   type: SessionType,
-  remainingMs: number,
+  displayMs: number,
   taskLabel: string,
+  language: LanguageCode,
 ) {
   if (Platform.OS === "web") return;
   try {
-    const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    const totalSeconds = Math.max(0, Math.ceil(displayMs / 1000));
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     const time = `${minutes.toString().padStart(2, "0")}:${seconds
       .toString()
       .padStart(2, "0")}`;
-    const title = `${sessionLabel(type)} • ${time}`;
-    const body = taskLabel ? taskLabel : "Pomodoro running";
+    const label = sessionLabel(type, language);
+    const t = createTranslator(language);
+    const title = `${label} • ${time}`;
+    const body = taskLabel ? taskLabel : t("notification.remaining", { time });
     await Notifications.scheduleNotificationAsync({
       identifier: PILL_NOTIFICATION_ID,
       content: {
@@ -302,12 +336,15 @@ async function scheduleEndNotification(
   const inQuiet = isInQuietHours(settings, willEndDate);
   const shouldSound = settings.soundEnabled && !inQuiet;
   const next = nextSessionType(currentType, completedRounds, settings);
+  const t = createTranslator(settings.language);
   try {
     await Notifications.scheduleNotificationAsync({
       identifier: SCHEDULED_END_ID,
       content: {
-        title: "Time's up",
-        body: `Next: ${sessionLabel(next)}`,
+        title: t("notification.timeUp"),
+        body: t("notification.next", {
+          label: sessionLabel(next, settings.language),
+        }),
         sound: shouldSound,
         // During quiet hours, route to a silent/no-vibrate channel so the OS
         // delivers the alert without sound or vibration even when the JS
@@ -383,6 +420,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Persist
   useEffect(() => {
     if (!loaded) return;
+    const rtl = isRtlLanguage(settings.language);
+    if (I18nManager.isRTL !== rtl) {
+      I18nManager.allowRTL(rtl);
+      I18nManager.forceRTL(rtl);
+    }
     AsyncStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings)).catch(
       () => {},
     );
@@ -418,17 +460,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const remainingMs = useMemo(() => {
+    if (isStopwatchMode(settings)) return 0;
     if (!timer.isRunning) {
       return timer.pausedRemainingMs ?? timer.totalMs;
     }
     if (timer.startedAt == null) return timer.totalMs;
     const elapsed = now - timer.startedAt;
     return Math.max(0, timer.totalMs - elapsed);
-  }, [timer, now]);
+  }, [settings.timerMode, timer, now]);
+
+  const elapsedMs = useMemo(() => {
+    if (isStopwatchMode(settings)) {
+      if (!timer.isRunning) return timer.pausedRemainingMs ?? 0;
+      if (timer.startedAt == null) return timer.pausedRemainingMs ?? 0;
+      return Math.max(0, timer.pausedRemainingMs ?? 0) + Math.max(0, now - timer.startedAt);
+    }
+    return Math.max(0, timer.totalMs - remainingMs);
+  }, [settings.timerMode, timer, now, remainingMs]);
 
   const completeSession = useCallback(() => {
     const current = timerRef.current;
     const s = settingsRef.current;
+    if (isStopwatchMode(s)) return;
     const completedAt = Date.now();
     const record: SessionRecord = {
       id: makeId(),
@@ -490,10 +543,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Auto-complete when remaining hits 0
   useEffect(() => {
-    if (timer.isRunning && remainingMs <= 0) {
+    if (!isStopwatchMode(settings) && timer.isRunning && remainingMs <= 0) {
       completeSession();
     }
-  }, [remainingMs, timer.isRunning, completeSession]);
+  }, [settings, remainingMs, timer.isRunning, completeSession]);
 
   // Tick haptic — plays once per second while running
   const lastTickSecondRef = useRef<number>(-1);
@@ -512,9 +565,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [remainingMs, timer.isRunning, settings.tickEnabled]);
 
   // Floating overlay (system-wide, Android-only, custom dev build only).
-  // Updates once per second so the visible time stays accurate.
   const lastOverlayShownRef = useRef(false);
   const overlayPermissionRef = useRef<boolean | null>(null);
+  const lastOverlayStateKeyRef = useRef("");
 
   // Cross-build migration: if `floatingOverlayEnabled` was persisted by
   // a prior custom build but the app now runs somewhere the native
@@ -567,6 +620,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (lastOverlayShownRef.current) {
         FloatingPill.hide();
         lastOverlayShownRef.current = false;
+        lastOverlayStateKeyRef.current = "";
       }
       return;
     }
@@ -576,9 +630,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // session by tapping the play icon on the overlay itself.
     const sessionInProgress =
       timer.isRunning ||
-      (timer.pausedRemainingMs != null &&
-        timer.pausedRemainingMs > 0 &&
-        timer.pausedRemainingMs < timer.totalMs);
+      (isStopwatchMode(settings)
+        ? (timer.pausedRemainingMs ?? 0) > 0
+        : timer.pausedRemainingMs != null &&
+          timer.pausedRemainingMs > 0 &&
+          timer.pausedRemainingMs < timer.totalMs);
     const enabled = settings.floatingOverlayEnabled && sessionInProgress;
     const sessionColor =
       timer.sessionType === "work"
@@ -586,18 +642,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         : timer.sessionType === "shortBreak"
           ? "#2a9d8f"
           : "#6b78c8";
-    const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    const displayMs = isStopwatchMode(settings) ? elapsedMs : remainingMs;
+    const totalSeconds = Math.max(
+      0,
+      isStopwatchMode(settings)
+        ? Math.floor(displayMs / 1000)
+        : Math.ceil(displayMs / 1000),
+    );
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     const time = `${minutes.toString().padStart(2, "0")}:${seconds
       .toString()
       .padStart(2, "0")}`;
-    const label = sessionLabel(timer.sessionType);
+    const label = sessionLabel(timer.sessionType, settings.language);
+    const endAt =
+      timer.isRunning && !isStopwatchMode(settings) && timer.startedAt != null
+        ? timer.startedAt + timer.totalMs
+        : Date.now() + remainingMs;
+    const displayStartedAt =
+      timer.isRunning && timer.startedAt != null
+        ? timer.startedAt
+        : Date.now() - displayMs;
+    const overlayElapsedMs = isStopwatchMode(settings) && timer.isRunning ? 0 : displayMs;
 
     if (!enabled) {
       if (lastOverlayShownRef.current) {
         FloatingPill.hide();
         lastOverlayShownRef.current = false;
+        lastOverlayStateKeyRef.current = "";
       }
       return;
     }
@@ -608,22 +680,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       task: timer.taskLabel,
       running: timer.isRunning,
       color: sessionColor,
+      endAt,
+      totalMs: timer.totalMs,
+      shape: settings.pillShape,
+      mode: settings.timerMode,
+      startedAt: displayStartedAt,
+      elapsedMs: overlayElapsedMs,
     };
+    const overlayStateKey = [
+      label,
+      time,
+      timer.taskLabel,
+      timer.isRunning,
+      sessionColor,
+      Math.floor(endAt / 1000),
+      settings.pillShape,
+      settings.timerMode,
+      Math.floor(displayStartedAt / 1000),
+      Math.floor(overlayElapsedMs / 1000),
+    ].join("|");
+    if (
+      lastOverlayShownRef.current &&
+      overlayStateKey === lastOverlayStateKeyRef.current
+    ) {
+      return;
+    }
     if (!lastOverlayShownRef.current) {
       FloatingPill.show(state);
       lastOverlayShownRef.current = true;
     } else {
       FloatingPill.update(state);
     }
+    lastOverlayStateKeyRef.current = overlayStateKey;
   }, [
     loaded,
     settings.floatingOverlayEnabled,
+    settings.timerMode,
     timer.isRunning,
     timer.pausedRemainingMs,
     timer.totalMs,
     timer.sessionType,
     timer.taskLabel,
+    settings.language,
+    settings.pillShape,
     remainingMs,
+    elapsedMs,
   ]);
 
   // Wire overlay toggle/open events back to timer actions
@@ -637,18 +738,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setTimer((prev) => {
           if (!prev.isRunning || prev.startedAt == null) return prev;
           const elapsed = Date.now() - prev.startedAt;
-          const remaining = Math.max(0, prev.totalMs - elapsed);
+          const value = isStopwatchMode(settingsRef.current)
+            ? Math.max(0, prev.pausedRemainingMs ?? 0) + Math.max(0, elapsed)
+            : Math.max(0, prev.totalMs - elapsed);
           cancelScheduledEnd();
           return {
             ...prev,
             isRunning: false,
             startedAt: null,
-            pausedRemainingMs: remaining,
+            pausedRemainingMs: value,
           };
         });
       } else {
         setTimer((prev) => {
           if (prev.isRunning) return prev;
+          if (isStopwatchMode(settingsRef.current)) {
+            return {
+              ...prev,
+              isRunning: true,
+              startedAt: Date.now(),
+            };
+          }
           const remaining = prev.pausedRemainingMs ?? prev.totalMs;
           const startedAt = Date.now() - (prev.totalMs - remaining);
           scheduleEndNotification(
@@ -678,8 +788,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Pill notification updater — throttled to once per minute change to avoid notification flicker
   const lastPillMinuteRef = useRef<number>(-1);
-  const remainingSeconds = Math.ceil(remainingMs / 1000);
-  const remainingMinute = Math.ceil(remainingSeconds / 60);
+  const pillDisplayMs = isStopwatchMode(settings) ? elapsedMs : remainingMs;
+  const pillSeconds = isStopwatchMode(settings)
+    ? Math.floor(pillDisplayMs / 1000)
+    : Math.ceil(pillDisplayMs / 1000);
+  const pillMinute = Math.ceil(pillSeconds / 60);
   useEffect(() => {
     if (!loaded) return;
     if (Platform.OS === "web") return;
@@ -693,16 +806,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       lastPillMinuteRef.current = -1;
       return;
     }
-    if (lastPillMinuteRef.current === remainingMinute) return;
-    lastPillMinuteRef.current = remainingMinute;
-    showPillNotification(timer.sessionType, remainingMs, timer.taskLabel);
+    if (lastPillMinuteRef.current === pillMinute) return;
+    lastPillMinuteRef.current = pillMinute;
+    showPillNotification(
+      timer.sessionType,
+      pillDisplayMs,
+      timer.taskLabel,
+      settings.language,
+    );
   }, [
     timer.isRunning,
     timer.sessionType,
     timer.taskLabel,
-    remainingMinute,
-    remainingMs,
+    pillMinute,
+    pillDisplayMs,
     settings.pillNotificationEnabled,
+    settings.language,
+    settings.timerMode,
     loaded,
   ]);
 
@@ -727,6 +847,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Only resync totalMs if the timer is in a fully reset state (not paused mid-session).
       // If pausedRemainingMs equals totalMs, the timer is fresh — safe to resync.
       const currentTimer = timerRef.current;
+      if (
+        updates.timerMode != null &&
+        updates.timerMode !== prev.timerMode &&
+        !currentTimer.isRunning
+      ) {
+        const newTotal = durationForType(currentTimer.sessionType, newSettings);
+        setTimer((t) => ({
+          ...t,
+          isRunning: false,
+          startedAt: null,
+          pausedRemainingMs: updates.timerMode === "stopwatch" ? 0 : newTotal,
+          totalMs: newTotal,
+        }));
+        return newSettings;
+      }
       const isFreshlyReset =
         !currentTimer.isRunning &&
         (currentTimer.pausedRemainingMs == null ||
@@ -780,6 +915,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const start = useCallback(() => {
     setTimer((prev) => {
       if (prev.isRunning) return prev;
+      if (isStopwatchMode(settingsRef.current)) {
+        return {
+          ...prev,
+          isRunning: true,
+          startedAt: Date.now(),
+        };
+      }
       const remaining = prev.pausedRemainingMs ?? prev.totalMs;
       const startedAt = Date.now() - (prev.totalMs - remaining);
       scheduleEndNotification(
@@ -801,7 +943,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTimer((prev) => {
       if (!prev.isRunning || prev.startedAt == null) return prev;
       const elapsed = Date.now() - prev.startedAt;
-      const remaining = Math.max(0, prev.totalMs - elapsed);
+      const remaining = isStopwatchMode(settingsRef.current)
+        ? Math.max(0, prev.pausedRemainingMs ?? 0) + Math.max(0, elapsed)
+        : Math.max(0, prev.totalMs - elapsed);
       cancelScheduledEnd();
       return {
         ...prev,
@@ -819,7 +963,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         isRunning: false,
         startedAt: null,
-        pausedRemainingMs: total,
+        pausedRemainingMs: isStopwatchMode(settingsRef.current) ? 0 : total,
         totalMs: total,
       };
     });
@@ -830,6 +974,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const skip = useCallback(() => {
     setTimer((prev) => {
       const s = settingsRef.current;
+      if (isStopwatchMode(s)) {
+        return {
+          ...prev,
+          isRunning: false,
+          startedAt: null,
+          pausedRemainingMs: 0,
+        };
+      }
       const newCompletedRounds =
         prev.sessionType === "work"
           ? prev.completedRounds + 1
@@ -883,7 +1035,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       await Share.share({
         message: json,
-        title: "Pomodoro stats export",
+        title: createTranslator(settingsRef.current.language)("settings.exportStats"),
       });
     } catch {
       // ignore
@@ -898,6 +1050,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       applyPreset,
       timer,
       remainingMs,
+      elapsedMs,
       start,
       pause,
       reset,
@@ -916,6 +1069,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       applyPreset,
       timer,
       remainingMs,
+      elapsedMs,
       start,
       pause,
       reset,

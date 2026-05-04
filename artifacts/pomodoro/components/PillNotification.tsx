@@ -17,12 +17,7 @@ import { useApp } from "@/contexts/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { formatTime } from "@/lib/format";
-
-const SESSION_LABELS = {
-  work: "Focus",
-  shortBreak: "Short Break",
-  longBreak: "Long Break",
-};
+import { createTranslator } from "@/lib/i18n";
 
 export function PillNotification() {
   const colors = useColors();
@@ -31,7 +26,19 @@ export function PillNotification() {
   const layout = useResponsiveLayout();
   const navigation = useNavigation();
   const segments = useSegments() as string[];
-  const { timer, remainingMs, pause, start } = useApp();
+  const { timer, remainingMs, elapsedMs, pause, start, settings } = useApp();
+  const t = React.useMemo(
+    () => createTranslator(settings.language),
+    [settings.language],
+  );
+  const resolvedScheme =
+    settings.colorScheme === "system" ? colorScheme : settings.colorScheme;
+  const isCompact = settings.pillShape === "compact";
+  const isStopwatch = settings.timerMode === "stopwatch";
+  const displayMs = isStopwatch ? elapsedMs : remainingMs;
+  const sessionLabel = isStopwatch
+    ? t("timer.stopwatch")
+    : t(`session.${timer.sessionType}`);
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(20)).current;
 
@@ -57,7 +64,9 @@ export function PillNotification() {
   }, [isVisible, opacity, translateY]);
 
   const sessionColor =
-    timer.sessionType === "work"
+    isStopwatch
+      ? colors.primary
+      : timer.sessionType === "work"
       ? colors.workColor
       : timer.sessionType === "shortBreak"
         ? colors.shortBreakColor
@@ -110,47 +119,65 @@ export function PillNotification() {
           left: layout.isTablet ? 32 : 16,
           right: layout.isTablet ? 32 : 16,
         },
+        isCompact ? styles.compactWrapper : null,
       ]}
     >
       <Pressable
         onPress={handleOpen}
-        style={styles.pressable}
+        style={isCompact ? styles.compactPressable : styles.pressable}
         accessibilityRole="button"
-        accessibilityLabel={`Open timer, ${SESSION_LABELS[timer.sessionType]} ${formatTime(remainingMs)} remaining`}
+        accessibilityLabel={`${sessionLabel} ${formatTime(displayMs)}`}
       >
         <View
           style={[
             styles.pill,
             {
+              borderRadius:
+                settings.pillShape === "square"
+                  ? 10
+                  : settings.pillShape === "rounded"
+                    ? 18
+                    : 999,
+              paddingVertical: isCompact ? 8 : 10,
+              gap: isCompact ? 6 : 12,
+              paddingHorizontal: isCompact ? 8 : 14,
+            },
+            {
               backgroundColor: colors.card,
               borderColor: colors.border,
-              shadowColor: colorScheme === "dark" ? "#000" : "#000",
+              shadowColor: "#000",
             },
           ]}
         >
           {Platform.OS === "ios" ? (
             <BlurView
               intensity={60}
-              tint={colorScheme === "dark" ? "dark" : "light"}
+              tint={resolvedScheme === "dark" ? "dark" : "light"}
               style={StyleSheet.absoluteFill}
             />
           ) : null}
           <View style={[styles.dot, { backgroundColor: sessionColor }]} />
-          <View style={styles.textCol}>
+          <View
+            style={[
+              styles.textCol,
+              isCompact ? styles.compactTextCol : null,
+            ]}
+          >
             <Text style={[styles.label, { color: colors.mutedForeground }]}>
-              {SESSION_LABELS[timer.sessionType]}
+              {sessionLabel}
             </Text>
             <Text style={[styles.time, { color: colors.foreground }]}>
-              {formatTime(remainingMs)}
+              {formatTime(displayMs)}
             </Text>
           </View>
           <Pressable
             onPress={handleToggle}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={timer.isRunning ? "Pause timer" : "Resume timer"}
+            accessibilityLabel={timer.isRunning ? t("timer.pause") : t("timer.resume")}
             style={({ pressed }) => [
               styles.iconBtn,
+              isCompact ? styles.compactIconBtn : null,
               {
                 backgroundColor: sessionColor,
                 opacity: pressed ? 0.85 : 1,
@@ -179,6 +206,13 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 360,
   },
+  compactWrapper: {
+    left: undefined,
+    right: undefined,
+  },
+  compactPressable: {
+    alignSelf: "center",
+  },
   pill: {
     flexDirection: "row",
     alignItems: "center",
@@ -201,6 +235,9 @@ const styles = StyleSheet.create({
   textCol: {
     flex: 1,
   },
+  compactTextCol: {
+    flex: 0,
+  },
   label: {
     fontSize: 11,
     fontFamily: "Inter_500Medium",
@@ -219,5 +256,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
+  },
+  compactIconBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
 });
