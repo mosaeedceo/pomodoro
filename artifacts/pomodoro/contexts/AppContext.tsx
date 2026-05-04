@@ -252,8 +252,10 @@ async function configureNotifications() {
 export const sessionLabel = (
   type: SessionType,
   language: LanguageCode = "en",
+  mode: TimerMode = "pomodoro",
 ): string => {
   const t = createTranslator(language);
+  if (mode === "stopwatch") return t("timer.stopwatch");
   switch (type) {
     case "work":
       return t("session.work");
@@ -269,6 +271,7 @@ async function showPillNotification(
   displayMs: number,
   taskLabel: string,
   language: LanguageCode,
+  mode: TimerMode,
 ) {
   if (Platform.OS === "web") return;
   try {
@@ -278,7 +281,7 @@ async function showPillNotification(
     const time = `${minutes.toString().padStart(2, "0")}:${seconds
       .toString()
       .padStart(2, "0")}`;
-    const label = sessionLabel(type, language);
+    const label = sessionLabel(type, language, mode);
     const t = createTranslator(language);
     const title = `${label} • ${time}`;
     const body = taskLabel ? taskLabel : t("notification.remaining", { time });
@@ -654,7 +657,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const time = `${minutes.toString().padStart(2, "0")}:${seconds
       .toString()
       .padStart(2, "0")}`;
-    const label = sessionLabel(timer.sessionType, settings.language);
+    const label = sessionLabel(
+      timer.sessionType,
+      settings.language,
+      settings.timerMode,
+    );
     const endAt =
       timer.isRunning && !isStopwatchMode(settings) && timer.startedAt != null
         ? timer.startedAt + timer.totalMs
@@ -813,6 +820,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       pillDisplayMs,
       timer.taskLabel,
       settings.language,
+      settings.timerMode,
     );
   }, [
     timer.isRunning,
