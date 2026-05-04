@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Scientific Calculator",
-    "slug": "scientific-calculator",
+    "name": "Pomodoro",
+    "slug": "pomodoro",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
-    "scheme": "scientificcalculator",
+    "scheme": "pomodoro",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -22,6 +22,7 @@
       }
     },
     "android": {
+      "package": "com.anonymous.pomodoro",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#fdf8f6"

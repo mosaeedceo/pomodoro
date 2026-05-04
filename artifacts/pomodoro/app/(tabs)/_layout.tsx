@@ -27,7 +27,7 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      initialRouteName="calculator"
+      initialRouteName="index"
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
@@ -93,15 +93,6 @@ export default function TabLayout() {
               size={focused ? 26 : 24}
               color={color}
             />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="calculator"
-        options={{
-          title: t("tabs.calculator"),
-          tabBarIcon: ({ color, focused }) => (
-            <Feather name="grid" size={focused ? 26 : 24} color={color} />
           ),
         }}
       />
