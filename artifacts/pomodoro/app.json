@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Pomodoro",
-    "slug": "pomodoro",
+    "name": "Scientific Calculator",
+    "slug": "scientific-calculator",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
-    "scheme": "pomodoro",
+    "scheme": "scientificcalculator",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
